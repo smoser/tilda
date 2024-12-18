@@ -21,7 +21,7 @@ shellcheck
 user="smoser"
 
 apt-get update
-apt-get install --assume-yes "$pkgs"
+apt-get install --assume-yes $pkgs
 
 adduser $user kvm
 adduser $user docker
