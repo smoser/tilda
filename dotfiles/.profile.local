@@ -1,0 +1,8 @@
+if [ -d /disks/home/smoser ]; then
+   HOME=/disks/home/smoser
+   cd "$HOME"
+
+   [ -d "$HOME/bin" ] || mkdir -p "$HOME/bin"
+fi
+
+PATH=$HOME/bin:$HOME/go/bin:/usr/local/bin:/usr/bin:/usr/sbin:/bin:/sbin
