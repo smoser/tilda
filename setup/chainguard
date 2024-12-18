@@ -1,0 +1,40 @@
+#!/bin/sh
+#
+TEMP_D=""
+
+cleanup() {
+    [ -n "$TEMP_D" ] || return 0
+    rm -Rf "$TEMP_D"
+}
+
+TEMP_D=$(mktemp -d)
+trap cleanup EXIT
+
+cd "$TEMP_D"
+url="https://dl.enforce.dev/chainctl/latest/chainctl_$(uname -s | tr '[:upper:]' '[:lower:]')_$(uname -m | sed 's/aarch64/arm64/')"
+
+curl -o chainctl "$url"
+install -m 0755 chainctl "$HOME/bin/"
+
+go install chainguard.dev/melange@latest
+
+gists="
+login-images:568f03b41efe80f57cea4605beec71ac
+get-sbom:90730d2c62cb5a34adcaccf41d997d2b
+wolfi-tools:0a11e2643b884960c1e5349d4dc0b8c7
+"
+
+mkdir -p "$HOME/gists"
+cd "$HOME/gists"
+burl=https://gist.github.com/smoser/
+for gist in $gists; do
+    name="${gist%:*}"
+    hash=${gist#*:}
+    if [ -d "$name" ]; then
+        ( cd "$name"
+          git fetch upstream
+          git checkout upstream/main )
+    else
+        git clone -o upstream "$burl$hash" "$name"
+    fi
+done

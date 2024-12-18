@@ -1,0 +1,2 @@
+#!/bin/sh
+git ls-tree -r --name-only ${2:-HEAD} | grep "$1"

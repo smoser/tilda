@@ -1,0 +1,2 @@
+#!/bin/sh
+git show --quiet --format=format:%B "${1:-HEAD}"

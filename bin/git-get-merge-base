@@ -1,0 +1,53 @@
+#!/bin/sh
+Usage() {
+    cat <<EOF
+Usage: ${0##*/} [commitish-1 [commitish-2]]
+
+  Find the merge base of commitish-1 and commitish-2
+
+  commitish-1 defaults to HEAD
+  commitish-2 defaults to
+    - the tracking branch of commitish-1 (if configured)
+    - upstream/main or upstream/master
+EOF
+}
+debug() { [ "$VERBOSITY" -ge 1 ] && echo "$@" 1>&2; }
+fail() { echo "$@" 1>&2; exit 1; }
+
+VERBOSITY=0
+
+[ "$1" = "-h" -o "$1" = "--help" ] && { Usage; exit 0; }
+[ "$1" = "-v" ] && VERBOSITY=1 && shift
+[ $# -le 2 ] ||
+    { Usage;  echo "got $# args, expected 1 or 2"; exit 1; } 1>&2
+
+cmt1=${1:-HEAD}
+cmt2=$2
+
+if [ -z "$cmt2" ]; then
+    br=$(git rev-parse --abbrev-ref "$cmt1")
+    if [ "$br" != "HEAD" ]; then
+        # we're on a branch rather than detached head.
+        remote=$(git config --get "branch.$br.remote")
+        if [ -n "$remote" ]; then
+            tracking=$(git config --get "branch.$br.merge")
+            [ "$remote" = "." ] && remote=""
+            cmt2="${remote:+${remote}/}${tracking#refs/heads/}"
+            debug "$cmt1 is on branch $br tracking $cmt2"
+        else
+            debug "$cmt1 is on branch $br. no configured tracking branch"
+        fi
+    fi
+    if [ -z "$cmt2" ]; then
+        # pick an existing remote
+        for cand in upstream/main upstream/master origin/main origin/master; do
+            other=$(git rev-parse --quiet --verify "$cand" 2>/dev/null) && break
+        done
+        [ -n "$other" ] && cmt2="$other"
+        debug "selected default branch $cmt2 for commitish-2"
+    fi
+    [ -n "$cmt2" ] || fail "unable to find a merge-base for $cmt1."
+fi
+
+debug merge-base "$cmt1" "$cmt2"
+exec git merge-base "$cmt1" "$cmt2"

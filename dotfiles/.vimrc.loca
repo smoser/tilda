@@ -1,0 +1,14 @@
+" smoser
+" colorscheme solarized
+set mouse=
+set background=dark
+if filereadable(expand("~/.vim/vimrc.background"))
+  source ~/.vim/vimrc.background
+endif
+"
+
+" https://github.com/prabirshrestha/asyncomplete.vim
+let g:asyncomplete_auto_completeopt = 0
+set completeopt=menuone,noinsert,noselect,preview
+let g:asyncomplete_auto_popup = 1
+" end smoser

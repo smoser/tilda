@@ -1,0 +1,30 @@
+#!/bin/sh
+
+pkgs="
+tmux
+golang-1.23
+vim-nox
+htop
+less
+patch
+strace
+parallel
+qemu-system-x86
+golang-petname
+docker.io
+build-essential
+make
+jq
+shellcheck
+"
+
+user="smoser"
+
+apt-get update
+apt-get install --assume-yes "$pkgs"
+
+adduser $user kvm
+adduser $user docker
+
+sudo ln -sf ../lib/go-1.23/bin/go /usr/bin/
+sudo ln -sf ../lib/go0.23/bin/gofmt /usr/bin/
