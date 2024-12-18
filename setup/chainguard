@@ -11,10 +11,16 @@ TEMP_D=$(mktemp -d)
 trap cleanup EXIT
 
 cd "$TEMP_D"
-url="https://dl.enforce.dev/chainctl/latest/chainctl_$(uname -s | tr '[:upper:]' '[:lower:]')_$(uname -m | sed 's/aarch64/arm64/')"
 
-curl -o chainctl "$url"
-install -m 0755 chainctl "$HOME/bin/"
+if [ -x "$HOME/bin/chainctl" ]; then
+  chainctl update --yes
+else
+  url="https://dl.enforce.dev/chainctl/latest/chainctl_$(uname -s | tr '[:upper:]' '[:lower:]')_$(uname -m | sed 's/aarch64/arm64/')"
+
+  curl -o chainctl "$url"
+  install -m 0755 chainctl "$HOME/bin/"
+
+fi
 
 go install chainguard.dev/melange@latest
 
