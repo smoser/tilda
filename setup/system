@@ -16,6 +16,7 @@ build-essential
 make
 jq
 shellcheck
+bubblewrap
 "
 
 user="smoser"
