@@ -19,10 +19,23 @@ else
 
   curl -o chainctl "$url"
   install -m 0755 chainctl "$HOME/bin/"
-
 fi
 
+chainctl config set auth.device-flow chainguard
+chainctl config set default.social-login google-oauth2
+chainctl config set auth.mode headless
+
 go install chainguard.dev/melange@latest
+
+if ! command -v wolfictl >/dev/null 2>&1; then
+    mkdir "$HOME/src"
+    cd "$HOME/src"
+    if [ ! -d wolfictl ]; then
+        git clone -o upstream https://github.com/wolfi-dev/wolfictl
+    fi
+    cd wolfictl
+    go install
+fi
 
 gists="
 login-images:568f03b41efe80f57cea4605beec71ac
