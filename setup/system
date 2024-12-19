@@ -29,7 +29,7 @@ adduser $user kvm
 adduser $user docker
 
 ln -sf ../lib/go-1.23/bin/go /usr/bin/
-ln -sf ../lib/go0.23/bin/gofmt /usr/bin/
+ln -sf ../lib/go-1.23/bin/gofmt /usr/bin/
 ln -sf golang-petname /usr/bin/petname
 
 diskshome="/disks/home"
