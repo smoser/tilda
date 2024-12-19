@@ -12,11 +12,17 @@ trap cleanup EXIT
 
 cd "$TEMP_D"
 
-if [ -x "$HOME/bin/chainctl" ]; then
+machine=$(uname -m)
+arch=$machine
+os=$(uname -s | tr '[:upper:]' '[:lower:]')
+case "$machine" in
+    aarch64) arch=arm64;;
+esac
+
+if false && [ -x "$HOME/bin/chainctl" ]; then
   chainctl update --yes
 else
-  url="https://dl.enforce.dev/chainctl/latest/chainctl_$(uname -s | tr '[:upper:]' '[:lower:]')_$(uname -m | sed 's/aarch64/arm64/')"
-
+  url="https://dl.enforce.dev/chainctl/latest/chainctl_${os}_${arch}"
   curl -o chainctl "$url"
   install -m 0755 chainctl "$HOME/bin/"
 fi
