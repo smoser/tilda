@@ -1,4 +1,5 @@
 #!/bin/sh
+[ "$(id -u)" = "0" ] || { echo "not root"; exit 1; }
 
 pkgs="
 tmux
@@ -27,5 +28,14 @@ apt-get install --assume-yes $pkgs
 adduser $user kvm
 adduser $user docker
 
-sudo ln -sf ../lib/go-1.23/bin/go /usr/bin/
-sudo ln -sf ../lib/go0.23/bin/gofmt /usr/bin/
+ln -sf ../lib/go-1.23/bin/go /usr/bin/
+ln -sf ../lib/go0.23/bin/gofmt /usr/bin/
+ln -sf golang-petname /usr/bin/petname
+
+diskshome="/disks/home"
+if [ -d "$diskshome" ]; then
+    if ! [ -d "$diskshome/$user" ]; then
+        mkdir "$diskshome/$user"
+        chown "$user:$user" "$diskshome/$user"
+    fi
+fi
