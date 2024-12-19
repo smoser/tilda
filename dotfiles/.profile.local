@@ -5,4 +5,6 @@ if [ -d /disks/home/smoser ]; then
    [ -d "$HOME/bin" ] || mkdir -p "$HOME/bin"
 fi
 
+export EDITOR=vi
 PATH=$HOME/bin:$HOME/go/bin:/usr/local/bin:/usr/bin:/usr/sbin:/bin:/sbin
+
