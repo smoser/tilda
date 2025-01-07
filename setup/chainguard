@@ -30,10 +30,18 @@ fi
 chainctl config set auth.device-flow chainguard
 chainctl config set default.social-login google-oauth2
 chainctl config set auth.mode headless
+chainctl auth configure-docker
+
+# TODO:
+# gcloud
+# crane
+# cosign
+
 
 go install chainguard.dev/melange@latest
 go install chainguard.dev/apko@latest
 go install github.com/chainguard-dev/yam@latest
+go install github.com/jonjohnsonjr/apkrane@latest
 
 if ! command -v wolfictl >/dev/null 2>&1; then
     mkdir "$HOME/src"
