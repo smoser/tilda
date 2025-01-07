@@ -1,0 +1,22 @@
+addpath() {
+    local p="${1%/}"
+    case ":$PATH:" in
+        *:$p:*|*:$p/:*) return 0;;
+    esac
+    PATH="$p:$PATH"
+}
+
+update_ssh_auth() {
+    [ -n "$TMUX" ] || { echo "not in tmux"; return 1; }
+    local out=""
+    out=$(tmux show-environment SSH_AUTH_SOCK) || {
+        echo "failed to show environment SSH_AUTH_SOCK $?" 1>&2
+        return 1
+    }
+    [ "$out" = "SSH_AUTH_SOCK=$SSH_AUTH_SOCK" ] && {
+        echo "no SSH_AUTH_SOCK update needed ($SSH_AUTH_SOCK)" 1>&2
+        return 0
+}
+    SSH_AUTH_SOCK=${out#SSH_AUTH_SOCK=}
+    echo "updated SSH_AUTH_SOCK: $SSH_AUTH_SOCK"
+}

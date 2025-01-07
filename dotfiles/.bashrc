@@ -116,6 +116,7 @@ if ! shopt -oq posix; then
   fi
 fi
 
+# changes from stock ubuntu below.
 if [ -f ~/.bashrc_smoser ]; then
     . ~/.bashrc_smoser
 fi
