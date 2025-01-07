@@ -1,0 +1,84 @@
+#!/bin/sh
+REMOVE_REMOTE=""
+
+fail() { echo "$@" 1>&2; exit 1; }
+get_remote() {
+    local out="" r=""
+    out=$(git remote -v) ||
+        fail "failed to 'git remote -v'"
+    r=$(echo "$out" | awk '$1 == n && $3 ~ fetch { print $2 ; exit 0; }' "n=$1")
+    [ -n "$r" ] || return 1
+    echo "$r"
+}
+
+Usage() {
+cat <<EOF
+Usage: ${0##*/} [options] user [remote-name]
+
+  add a remote named 'remote-name' to 'user' based on
+  either 'upstream', 'origin', or 'smoser.
+
+Basically:
+
+   $ ${0##*/} ryaharpe rharper
+
+Will add 'rharper' pointing to rharper.
+EOF
+}
+
+cleanup() {
+    [ -n "${REMOVE_REMOTE}" ] || return 0
+    git remote remove "$REMOVE_REMOTE"
+}
+
+trap cleanup EXIT
+[ "$1" = "-h" -o "$1" = "--help" ] && { Usage; exit 0; }
+
+repo_name=""
+case "$1" in
+    -r|--repo) repo_name=$2; shift 2;;
+    -r*) repo_name=${1#-r}; shift 1;;
+    --repo=*) repo_name=${1#--repo=}; shift 1;;
+esac
+
+[ $# -eq 1 -o $# -eq 2 ] ||
+    { Usage 1>&2; echo "got $#. expected 1 or 2"; exit 1; }
+
+ruser="$1"
+[ $# -eq 2 ] && rname=$2 || rname="$1"
+
+remotes=$(git remote) ||
+    fail "failed running 'git remote'"
+case " $remotes " in
+    *\ $rname\ *) fail "remote '$rname' already exists";;
+esac
+
+for refname in upstream origin smoser; do
+    refurl=$(get_remote "$refname") && break
+done
+
+[ -n "$refurl" ] || fail "failed to find a ref"
+    echo "refurl=$refurl: $refname"
+# expecting something like 
+# - proto://[tok@]host/user/repo.git
+#   https://c655860eed609ae26cb6e6a7f7f8ac6079c5bca0@aci-github.cisco.com/atom/atomix.git
+#   git@aci-github.cisco.com:atom/heimdall.git
+repo=${refurl##*/}
+t=${refurl%/$repo}
+utok=${t##*[:/]}
+pre=${refurl%$utok/$repo}
+[ -z "$repo_name" ] && repo_name=$repo
+
+rurl="${pre}$ruser/${repo_name}"
+
+git remote add "$rname" "$rurl" || fail "failed 'git remote add $rname $ruser'"
+REMOVE_REMOTE="$rname"
+git config "remote.$rname.fetch" "+refs/heads/*:refs/remotes/$rname/*" &&
+    git config --add "remote.$rname.fetch" "+refs/tags/*:refs/tags/$rname/*" ||
+    fail "failed to git config for $rname"
+git fetch "$rname" && REMOVE_REMOTE="" || {
+    git remote remove "$rname" || echo "failed git remote remove '$rname'" 1>&2
+    fail "git fetch '$rname' failed: '$rurl' does not seem right."
+}
+
+echo "added $rname -> $rurl"

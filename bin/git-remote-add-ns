@@ -1,0 +1,107 @@
+#!/bin/bash
+# shellcheck disable=SC2015,SC2039,SC3043
+# git-remote-addns
+VERBOSITY=0
+REMOVE_REMOTE=""
+
+error() { echo "$@" 1>&2; }
+errorrc() { local r=$?; error "$@"; return $r; }
+fail() { local r=$?;  [ $r -eq 0 ] && r=1; failrc "$r" "$@"; }
+failrc() { local r="$1"; shift; [ $# -eq 0 ] || error "$@"; exit "$r"; }
+
+Usage() {
+    cat <<EOF
+Usage: ${0##*/} [ options ] name url
+
+   Add a remote to git and namespace its tags and refs.
+
+   options:
+     -t | --tags           do not namespace tags
+     -v | --verbose        increase verbosity
+EOF
+}
+
+bad_Usage() { Usage 1>&2; [ $# -eq 0 ] || error "$@"; return 1; }
+
+cleanup() {
+    [ -z "$REMOVE_REMOTE" ] || {
+        vrun git remote remove "$REMOVE_REMOTE"
+    }
+}
+
+debug() {
+    local level=${1}; shift;
+    [ "${level}" -gt "${VERBOSITY}" ] && return
+    error "${@}"
+}
+
+vrun() {
+	debug 2 "running:" "$@"
+	"$@"
+}
+
+main() {
+    local short_opts="htv"
+    local long_opts="help,tags,verbose"
+    local getopt_out=""
+    getopt_out=$(getopt --name "${0##*/}" \
+        --options "${short_opts}" --long "${long_opts}" -- "$@") &&
+        eval set -- "${getopt_out}" ||
+        { bad_Usage; return; }
+
+    local cur="" rname="" rurl=""
+    while [ $# -ne 0 ]; do
+        cur="$1"
+        case "$cur" in
+            -h|--help) Usage ; exit 0;;
+            -v|--verbose) VERBOSITY=$((VERBOSITY+1));;
+            --) shift; break;;
+        esac
+        shift;
+    done
+
+    [ $# -eq 2 ] || { bad_Usage "must provide name and url"; return; }
+    rname="$1"
+    rurl="$2"
+
+	local out="" gitv=""
+	[ "$VERBOSITY" -gt 1 ] && gitv="-v"
+	#bref="https://git.launchpad.net/~usd-import-team/ubuntu/+source/"
+	out="$(git remote 2>&1)" ||
+		{ errorrc "Failed to run git remote"; return 1; }
+    if echo "$out" | grep -q "^$rname$"; then
+		errorrc "remote '$rname' already exists."
+		return 1
+	fi
+
+	debug 1 "Adding remote $rname with url $rurl."
+	vrun git remote add "$rname" "$rurl" || {
+		errorrc "Failed to add remote $rname at $rurl"
+		return 1
+	}
+    REMOVE_REMOTE="$rname"
+	vrun git config "remote.$rname.fetch" \
+		"+refs/heads/*:refs/remotes/$rname/*" &&
+		vrun git config --add "remote.$rname.fetch" \
+	     	"+refs/tags/*:refs/tags/$rname/*" || {
+			errorrc "Failed to add fetch for $rname"
+	        return 1
+		}
+
+	vrun git config "remote.$rname.tagOpt" --no-tags || {
+	    errorrc "Failed to set --no-tags on $rname"
+	    return 1
+	}
+
+	debug 1 "Fetching $rname"
+	vrun git fetch $gitv "$rname" || {
+		errorrc "Failed to fetch '$rname'. removing."
+		return 1
+	}
+
+    REMOVE_REMOTE=""
+    return 0
+}
+
+main "$@"
+# vi: ts=4 expandtab
