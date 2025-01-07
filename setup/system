@@ -18,10 +18,12 @@ make
 jq
 shellcheck
 bubblewrap
+rsync
 "
 
 user="smoser"
 
+timedatectl set-timezone US/Eastern
 apt-get update
 apt-get install --assume-yes $pkgs
 
