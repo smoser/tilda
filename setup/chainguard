@@ -32,16 +32,19 @@ chainctl config set default.social-login google-oauth2
 chainctl config set auth.mode headless
 chainctl auth configure-docker
 
-# TODO:
-# gcloud
-# crane
-# cosign
+gobuilds="
+chainguard.dev/melange@latest
+chainguard.dev/apko@latest
+github.com/chainguard-dev/yam@latest
+github.com/jonjohnsonjr/apkrane@latest
+github.com/sigstore/cosign/v2/cmd/cosign@latest
+github.com/google/go-containerregistry/cmd/crane@latest
+"
 
-
-go install chainguard.dev/melange@latest
-go install chainguard.dev/apko@latest
-go install github.com/chainguard-dev/yam@latest
-go install github.com/jonjohnsonjr/apkrane@latest
+for u in $gobuilds; do
+    echo ":: building $u"
+    go build "$u"
+done
 
 if ! command -v wolfictl >/dev/null 2>&1; then
     mkdir "$HOME/src"
@@ -52,6 +55,22 @@ if ! command -v wolfictl >/dev/null 2>&1; then
     cd wolfictl
     go install
 fi
+
+# gcloud
+# https://cloud.google.com/sdk/docs/install#linux
+garch=$machine
+[ "$garch" = "aarch64" ] && garch="arm"
+url=https://dl.google.com/dl/cloudsdk/channels/rapid/downloads/google-cloud-cli-linux-${garch}.tar.gz
+( d=$(mktemp -d) &&
+   trap "rm -Rf '$d'" EXIT &&
+   dest="$HOME/software" &&
+   idir="google-cloud-sdk" &&
+   cd "$d" && curl -o gcloud.tar.gz "$url" &&
+   tar -xf gcloud.tar.gz &&
+   rm -Rf "$dest/$idir" &&
+   mkdir -p "$dest" &&
+   mv "$idir" "$dest"
+)
 
 gists="
 login-images:568f03b41efe80f57cea4605beec71ac
