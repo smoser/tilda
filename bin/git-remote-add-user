@@ -76,9 +76,7 @@ REMOVE_REMOTE="$rname"
 git config "remote.$rname.fetch" "+refs/heads/*:refs/remotes/$rname/*" &&
     git config --add "remote.$rname.fetch" "+refs/tags/*:refs/tags/$rname/*" ||
     fail "failed to git config for $rname"
-git fetch "$rname" && REMOVE_REMOTE="" || {
-    git remote remove "$rname" || echo "failed git remote remove '$rname'" 1>&2
+git fetch "$rname" && REMOVE_REMOTE="" ||
     fail "git fetch '$rname' failed: '$rurl' does not seem right."
-}
 
 echo "added $rname -> $rurl"
