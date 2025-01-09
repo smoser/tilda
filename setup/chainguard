@@ -43,7 +43,7 @@ github.com/google/go-containerregistry/cmd/crane@latest
 
 for u in $gobuilds; do
     echo ":: building $u"
-    go build "$u"
+    go install "$u"
 done
 
 if ! command -v wolfictl >/dev/null 2>&1; then
