@@ -1,0 +1,47 @@
+#!/bin/sh
+#shellcheck disable=SC1091,SC2015,SC2166,SC3043
+vr() { echo "$" "$@" 1>&2; "$@"; }
+fail() { [ $# -eq 0 ] || echo "$@" 1>&2; exit 1; }
+hurl() {
+  local uin="$1"
+  case "$uin" in
+    http://*|https://*) echo "$uin";;
+    http:*) echo "https://github.com/${uin#http:}";;
+    ssh:*|*/*) echo "git@github.com:${uin#ssh:}";;
+    *) echo "unknown url $uin" 1>&2; return 1;;
+  esac
+}
+
+getname() {
+    local url="$1"
+    case "$url" in
+        http*) u=${url#http*://*/}; u=${u%%/*};;
+        git@github*) u=${url#git@*:}; u=${u%%/*};;
+        *) echo "confused by $url" 1>&2; return 1;
+    esac
+    echo "$u"
+}
+
+info() {
+   name="$1"
+   upstream=$(hurl "$2") || fail
+   shift 2
+   echo "name=$name"
+   echo "upstream=$upstream"
+   [ -d ~/src/"$name" ] && { echo "$name - already setup"; return 0; }
+   vr cd ~/src || fail "failed cd ~/src"
+   vr git clone -o upstream "$upstream" "$name" || fail
+   vr cd "$name" || fail "failed cd ~/src/$name"
+   for u in "$@"; do
+       url=$(hurl "$u") && rname=$(getname "$url") || fail
+       vr git remote add "$rname" "$url" && git fetch "$rname" || {
+           git remote remove "$rname"
+           fail "failed git remote add $rname $url"
+       }
+   done
+   return 0
+}
+
+case "$1" in
+  wolfi|wolfi-os) info wolfi-os http:wolfi-dev/os smoser/wolfi-os;;
+esac
