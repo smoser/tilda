@@ -1,0 +1,50 @@
+#!/bin/sh
+# shellcheck disable=SC1091,SC2166
+TEMP_D=""
+
+fail() { echo "$@" 1>&2; exit 1; }
+cleanup() { 
+  rm -Rf "$TEMP_D"
+}
+
+gittilda=https://github.com/smoser/tilda
+h=${1:-/disks/home/smoser}
+TEMP_D=$(mktemp -d) || exit
+trap cleanup EXIT
+
+( 
+  cd "$TEMP_D" &&
+  git clone "$gittilda" tilda &&
+  cd tilda && sudo ./setup/system
+) || fail "failed cloning tilda to tmpdir"
+
+[ -d "$h" ] || mkdir -p "$h" || exit 1
+cd "$h" || exit 1
+
+if [ -d "tilda" ]; then
+    ( set -x; cd tilda && git pull ) || exit 1
+else
+    git clone "$gittilda" tilda || exit 1
+fi
+
+mkdir -p "$h/bin" || exit 1
+( ln -svf tilda/dotfiles/.[a-zA-Z]* . ) || exit 1
+
+( cd "$h/bin" && ln -svf ../tilda/bin/* . ) || exit 1
+
+. "$h/.profile.local" || exit 1
+
+( cd "$h/tilda" && ./setup/chainguard ) || fail "setup/chainguard failed"
+
+cd "$h/bin" || exit 1
+for f in ../gists/*/*; do
+    [ -f "$f" -a -x "$f" ] || continue;
+    ln -svf "$f" . || exit 1
+done
+
+mkdir -p "$h/src"
+
+echo "running vim pluginstall"
+vim +'PlugInstall --sync' +qa
+
+echo "all done happy time"
