@@ -5,6 +5,16 @@ if [ -d /disks/home/smoser ]; then
    [ -d "$HOME/bin" ] || mkdir -p "$HOME/bin"
 fi
 
+if [ ! -e "/run/bootstrap/system-setup" ]; then
+    if [ -x $HOME/tilda/setup/system ]; then
+        sudo sh -c "
+           mkdir -p /run/bootstrap &&
+           $HOME/tilda/setup/system &&
+           date -R > /run/bootstrap/system-setup" ||
+           echo "failed system setup :-("
+    fi
+fi
+
 export EDITOR=vi
 PATH=$HOME/bin:$HOME/go/bin:/usr/local/bin:/usr/bin:/usr/sbin:/bin:/sbin
 
