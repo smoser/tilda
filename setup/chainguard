@@ -30,7 +30,6 @@ fi
 chainctl config set auth.device-flow chainguard
 chainctl config set default.social-login google-oauth2
 chainctl config set auth.mode headless
-chainctl auth configure-docker
 
 gobuilds="
 chainguard.dev/melange@latest
@@ -76,6 +75,7 @@ gists="
 login-images:568f03b41efe80f57cea4605beec71ac
 get-sbom:90730d2c62cb5a34adcaccf41d997d2b
 wolfi-tools:0a11e2643b884960c1e5349d4dc0b8c7
+upgrade:2217cde1a876d9d1e014
 "
 
 mkdir -p "$HOME/gists"
