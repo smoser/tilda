@@ -1,47 +1,89 @@
 #!/bin/sh
 #shellcheck disable=SC1091,SC2015,SC2166,SC3043
+namealiases="
+luca:89luca89
+justin:justinvreeland
+"
+
 vr() { echo "$" "$@" 1>&2; "$@"; }
 fail() { [ $# -eq 0 ] || echo "$@" 1>&2; exit 1; }
 hurl() {
-  local uin="$1"
-  case "$uin" in
-    http://*|https://*) echo "$uin";;
-    http:*) echo "https://github.com/${uin#http:}";;
-    ssh:*|*/*) echo "git@github.com:${uin#ssh:}";;
-    *) echo "unknown url $uin" 1>&2; return 1;;
-  esac
-}
-
-getname() {
-    local url="$1"
-    case "$url" in
-        http*) u=${url#http*://*/}; u=${u%%/*};;
-        git@github*) u=${url#git@*:}; u=${u%%/*};;
-        *) echo "confused by $url" 1>&2; return 1;
+    local uin="$1" url=""
+    case "$uin" in
+        http://*|https://*) url="$uin";;
+        http:*) url="https://github.com/${uin#http:}";;
+        ssh:*|*/*) url="git@github.com:${uin#ssh:}";;
+        *) echo "unknown url $uin" 1>&2; return 1;;
     esac
-    echo "$u"
+
+    local t="" t1="" u="" nu=""
+    case "$url" in
+        # ssh:git@github.com:user/path"
+        git@github.com:*)
+            t=${url#git@github.com:}
+            u=${t%%/*}
+            echo "t=$t"
+            echo "u=$u"
+            p=${t#"$u"}
+            nu=$(name2ghname "$u")
+            url="git@github.com:$nu/$p"
+            ;;
+        # https://github.com/user/path
+        https://*)
+            t=${url#https://*/}
+            t1=${url%/"$t"}
+            u=${t%%/*}
+            nu=$(name2ghname "$u")
+            p=${t#"$u/"}
+            url="$t1/$nu/$p"
+            ;;
+    esac
+    USERNICK=$u
+    # USERGH=$nu
+    URL=$url
 }
 
-info() {
-   name="$1"
-   upstream=$(hurl "$2") || fail
-   shift 2
-   echo "name=$name"
-   echo "upstream=$upstream"
-   [ -d ~/src/"$name" ] && { echo "$name - already setup"; return 0; }
-   vr cd ~/src || fail "failed cd ~/src"
-   vr git clone -o upstream "$upstream" "$name" || fail
-   vr cd "$name" || fail "failed cd ~/src/$name"
-   for u in "$@"; do
-       url=$(hurl "$u") && rname=$(getname "$url") || fail
-       vr git remote add "$rname" "$url" && git fetch "$rname" || {
-           git remote remove "$rname"
-           fail "failed git remote add $rname $url"
-       }
-   done
-   return 0
+name2ghname() {
+    local n="$1"
+    o=$(echo "$namealiases" |
+        awk -F: '$1 == n { print $2; exit 0; }' "n=$n")
+    echo "${o:-$n}"
 }
+
+clone() {
+    local urlin="$1" upstream="" rname="" url=""
+    name="$1"
+    urlin="$2"
+    shift 2
+    hurl "$urlin" || fail
+    upstream="$URL"
+    echo "name=$name"
+    echo "upstream=$upstream"
+    [ -d ~/src/"$name" ] && { echo "$name - already setup"; return 0; }
+    vr cd ~/src || fail "failed cd ~/src"
+    vr git clone -o upstream "$upstream" "$name" || fail
+    [ $# -eq 0 ] && return 0
+    vr cd "$name" || fail "failed cd ~/src/$name"
+    for u in "$@"; do
+        hurl "$u"
+        url="$URL"
+        rname="$USERNICK"
+        vr git remote add "$rname" "$url" && git fetch "$rname" || {
+            git remote remove "$rname"
+            fail "failed git remote add $rname $url"
+        }
+    done
+    return 0
+}
+
+#for u in "$@"; do
+#    hurl "$u" || { echo "FAIL: $u"; continue; }
+#    echo "$u -> $URL"
+#    echo "  usernick=$USERNICK"
+#done
 
 case "$1" in
-  wolfi|wolfi-os) info wolfi-os http:wolfi-dev/os smoser/wolfi-os;;
+    wolfi|wolfi-os) clone wolfi-os http:wolfi-dev/os smoser/wolfi-os;;
+    wolfi-vm) clone wolfi-vm chainguard-dev/wolfi-vm;;
+    *) echo "unknown $1"; exit 1;;
 esac
