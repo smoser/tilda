@@ -1,10 +1,5 @@
 #!/bin/sh
 #shellcheck disable=SC1091,SC2015,SC2166,SC3043
-namealiases="
-luca:89luca89
-justin:justinvreeland
-"
-
 vr() { echo "$" "$@" 1>&2; "$@"; }
 fail() { [ $# -eq 0 ] || echo "$@" 1>&2; exit 1; }
 hurl() {
@@ -22,9 +17,7 @@ hurl() {
         git@github.com:*)
             t=${url#git@github.com:}
             u=${t%%/*}
-            echo "t=$t"
-            echo "u=$u"
-            p=${t#"$u"}
+            p=${t#"$u/"}
             nu=$(name2ghname "$u")
             url="git@github.com:$nu/$p"
             ;;
@@ -45,7 +38,7 @@ hurl() {
 
 name2ghname() {
     local n="$1"
-    o=$(echo "$namealiases" |
+    o=$(echo "$useraliases" |
         awk -F: '$1 == n { print $2; exit 0; }' "n=$n")
     echo "${o:-$n}"
 }
@@ -76,14 +69,22 @@ clone() {
     return 0
 }
 
+mghclone() {
+    case "$1" in
+        wolfi) clone wolfi-os http:wolfi-dev/os smoser/wolfi-os;;
+        *) return 9;;
+    esac
+}
+
 #for u in "$@"; do
 #    hurl "$u" || { echo "FAIL: $u"; continue; }
 #    echo "$u -> $URL"
 #    echo "  usernick=$USERNICK"
 #done
 
-case "$1" in
-    wolfi|wolfi-os) clone wolfi-os http:wolfi-dev/os smoser/wolfi-os;;
-    wolfi-vm) clone wolfi-vm chainguard-dev/wolfi-vm;;
-    *) echo "unknown $1"; exit 1;;
-esac
+GHCLONE=mghclone
+if [ -f ~/.ghclone-helper ] ; then
+    . ~/.ghclone-helper
+fi
+
+"$GHCLONE" "$@"
