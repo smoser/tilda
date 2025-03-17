@@ -19,6 +19,9 @@ jq
 shellcheck
 bubblewrap
 rsync
+python3-venv
+python3-ruamel.yaml
+cloud-image-utils
 "
 
 user="smoser"
