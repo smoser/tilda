@@ -12,8 +12,8 @@ EOF
 [ "$1" = "-h" -o "$1" = "--help" ] && { Usage; exit 0; }
 [ "$1" = "--pkg" -o "$1" = "-p" ] && pkg=true && shift || pkg=false
 
-[ $# -le 1 ] || { Usage; echo "got $# args wanted 1"; exit 1; } 1>&2
-
+[ $# -eq 0 -o $# -eq 1 -o $# -eq 2 ] ||
+    { Usage; echo "got $# args wanted 1"; exit 1; } 1>&2
 
 since="${1:-HEAD}"
 if [ "$since" = "merge-base" -o "$since" = "mb" ]; then
@@ -21,8 +21,8 @@ if [ "$since" = "merge-base" -o "$since" = "mb" ]; then
         { echo "failed to get merge base" 1>&2; exit 1; }
 fi
 
-out=$(git diff --name-only "$since") ||
-    { echo "failed[$?]: git diff --stat $since"; exit 1; }
+out=$(git diff --name-only ${2:+"$2"} "$since") |
+    { echo "failed[$?]: git diff --stat ${2:+\"$2\"} $since"; exit 1; }
 
 # git diff --stat output looks like
 # file    |  4 +--
