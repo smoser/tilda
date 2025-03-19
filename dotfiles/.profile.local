@@ -6,12 +6,25 @@ if [ -d /disks/home/smoser ]; then
 fi
 
 if [ ! -e "/run/bootstrap/system-setup" ]; then
+    _oldgroups=$(groups)
     if [ -x $HOME/tilda/setup/system ]; then
         sudo sh -c "
            mkdir -p /run/bootstrap &&
            $HOME/tilda/setup/system &&
            date -R > /run/bootstrap/system-setup" ||
            echo "failed system setup :-("
+    fi
+    if [ ! -w /disks/home/smoser ] && [ -x /disks/home/remount-disk ]; then
+        sudo /disks/home/remount-disk ||
+            { echo "WARN remount-disk failed $?"; sleep 3; }
+    fi
+    if [ -e /run/bootstrap/system-setup ]; then
+        _newgroups=$(sudo -u "$LOGNAME" HOME= --login groups </dev/null)
+        if [ "$_newgroups" != "$_oldgroups" ]; then
+            echo "executing new login shell to get new groups"
+            exec sudo -Hu "$LOGNAME" --login \
+                ${SSH_AUTH_SOCK:+"SSH_AUTH_SOCK=$SSH_AUTH_SOCK"}
+        fi
     fi
 fi
 
