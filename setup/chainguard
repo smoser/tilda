@@ -19,6 +19,23 @@ case "$machine" in
     aarch64) arch=arm64;;
 esac
 
+# https://github.com/chainguard-dev/melange/issues/1508
+if [ -d /etc/apparmor.d ]; then
+    echo "write /etc/apparmor.d/local-bwrap"
+    sudo sh -c 'cat > /etc/apparmor.d/local-bwrap && systemctl reload apparmor' <<"EOF"
+abi <abi/4.0>,
+include <tunables/global>
+
+profile local-bwrap /usr/bin/bwrap flags=(unconfined) {
+  userns,
+
+  # Site-specific additions and overrides. See local/README for details.
+  include if exists <local/bwrap>
+}
+EOF
+    [ $? -eq 0 ] || echo "FAIL - didn't write to /etc/apparmor.d/local-bwrap"
+fi
+
 if [ -x "$HOME/bin/chainctl" ]; then
   chainctl update --yes
 else
