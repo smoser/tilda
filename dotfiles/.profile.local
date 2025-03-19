@@ -32,9 +32,9 @@ export EDITOR=vi
 PATH=$HOME/bin:$HOME/go/bin:/usr/local/bin:/usr/bin:/usr/sbin:/bin:/sbin
 
 if [ -t 0 ] && [ -t 1 ] && command -v login-images >/dev/null 2>&1; then
-    h=$(date --utc +%H)
-    if [ "$h" -le 22 ]; then
-        login-images --keepalive --until="22:00 UTC"
+    h=$(date +%H)
+    if [ "$h" -le 18 ]; then
+        login-images --keepalive --until="18:00"
     else
         echo "not login-images, its after 6:00 PM local time"
     fi
