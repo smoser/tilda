@@ -60,6 +60,7 @@ fi
 # gcloud
 # https://cloud.google.com/sdk/docs/install#linux
 garch=$machine
+echo "Installing gcloud"
 [ "$garch" = "aarch64" ] && garch="arm"
 url=https://dl.google.com/dl/cloudsdk/channels/rapid/downloads/google-cloud-cli-linux-${garch}.tar.gz
 ( d=$(mktemp -d) &&
