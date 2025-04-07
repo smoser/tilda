@@ -1,0 +1,85 @@
+#!/bin/sh
+# shellcheck disable=SC3043
+
+fail() { echo "$@" 1>&2; exit 1; }
+dl() {
+    local url="$1" out="${2:--}"
+    if command -v wget >/dev/null; then
+        wget -q "$url" -O "$out"
+    elif command -v curl >/dev/null; then
+        if [ "$out" = "-" ]; then
+            curl "$url"
+        else
+            curl "$url" > "$out"
+        fi
+    else
+        fail "no downloader for $url"
+    fi
+}
+
+mode=${1:-install}
+
+if command -v go >/dev/null && out=$(go version 2>/dev/null); then
+    # go version go1.24.2 linux/amd64
+    x=${out#go version go}
+    curlocal=${x% *}
+    # linux/amd64
+    plat=${out#go version go* }
+    os=${plat%/*}
+    arch=${plat#*/}
+    echo "current ver=$curlocal arch=$arch"
+else
+    curlocal=""
+    os=$(uname -s) && machine=$(uname -m) ||
+        { echo "don't know uname -s / uname -m"; exit 1; }
+    case "$os" in
+        [Ll]inux) os="linux";;
+        [Dd]arwin) os="darwin";;
+        *) fail "unknown os '$os'";;
+    esac
+    case "$machine" in
+        x86_64) arch=amd64;;
+        arm64|aarch64) arch=arm64;;
+        *) fail "unknown machine '$machine'";;
+    esac
+    echo "no 'go' in PATH arch=$arch os=$os"
+fi
+
+if [ "$mode" = "check-local" ]; then
+    exit 0
+fi
+
+command -v jq >/dev/null || fail "sorry, no 'jq'"
+# https://github.com/golang/go/issues/51135
+jurl="https://go.dev/dl/?mode=json"
+burl="https://go.dev/dl/"
+out=$(dl "$jurl" -) || fail "failed download $jurl"
+
+file=$(echo "$out" |
+    jq -r ".[0].files[] | select(.arch==\"$arch\" and .os==\"$os\").filename")
+
+verout=$(echo "$out" |
+    jq -r ".[0].files[] | select(.arch==\"$arch\" and .os==\"$os\").version")
+
+ver=${verout#go}
+
+case "$file" in
+    go*$os-$arch.tar.gz) :;;
+    *) fail "found file=$file. expected go*$os-$arch.tar.gz";;
+esac
+echo "$ver - $file"
+
+[ "$mode" = "check" ] && exit 0
+
+dl "${burl}${file}" "$file" ||
+    fail "failed download ${burl}${file}"
+
+[ "$mode" = "download" ] && exit 0
+
+sudo=""
+if [ "$(id -u)" != "0" ]; then
+    sudo="sudo"
+fi
+
+$sudo sh -c 'cd /usr/local && rm -Rf go &&
+    tar -xzf - && cd bin && ln -sf ../go/bin/* .' < "$file"
