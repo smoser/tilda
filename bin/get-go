@@ -1,5 +1,6 @@
 #!/bin/sh
-# shellcheck disable=SC3043
+#cal
+# shellcheck disable=SC3043,SC2015
 
 fail() { echo "$@" 1>&2; exit 1; }
 dl() {
@@ -27,7 +28,7 @@ if command -v go >/dev/null && out=$(go version 2>/dev/null); then
     plat=${out#go version go* }
     os=${plat%/*}
     arch=${plat#*/}
-    echo "current ver=$curlocal arch=$arch"
+    echo "local:  $curlocal [arch=$arch $(command -v go)]"
 else
     curlocal=""
     os=$(uname -s) && machine=$(uname -m) ||
@@ -67,10 +68,14 @@ case "$file" in
     go*$os-$arch.tar.gz) :;;
     *) fail "found file=$file. expected go*$os-$arch.tar.gz";;
 esac
-echo "$ver - $file"
+echo "latest: $ver [arch=$arch]"
 
 [ "$mode" = "check" ] && exit 0
 
+if [ "$curlocal" = "$ver" ]; then
+    echo "$(command -v go) in PATH is current version - $ver"
+    exit 0
+fi
 dl "${burl}${file}" "$file" ||
     fail "failed download ${burl}${file}"
 
