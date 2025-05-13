@@ -28,7 +28,7 @@ else
 fi
 
 mkdir -p "$h/bin" || exit 1
-( ln -svf tilda/dotfiles/.[a-zA-Z]* . ) || exit 1
+( cd "$h" && ln -svf tilda/dotfiles/.[a-zA-Z]* . ) || exit 1
 ( cd "$h/bin" && ln -svf ../tilda/bin/* . ) || exit 1
 
 ( cd "$h/tilda" && ./setup/user ) || fail "setup/user failed"
