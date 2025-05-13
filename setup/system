@@ -9,9 +9,9 @@ fi
 export PATH
 
 if command -v apt-get; then
-    "$mydir/setup/system-debian" "$@"
+    "$mydir/system-debian" "$@"
 elif command -v apk; then
-    "$mydir/setup/system-workstation" "$@"
+    "$mydir/system-workstation" "$@"
 else
     echo "FAIL: no system setup for your system"
     exit 1
