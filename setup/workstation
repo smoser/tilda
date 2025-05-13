@@ -1,0 +1,89 @@
+#!/bin/sh
+
+pkgs="
+tmux
+cosign
+vim
+htop
+less
+patch
+strace
+parallel
+qemu
+petname
+rsync
+py3-ruamel-yaml
+"
+#
+TEMP_D=""
+
+cleanup() {
+    [ -n "$TEMP_D" ] || return 0
+    rm -Rf "$TEMP_D"
+}
+
+TEMP_D=$(mktemp -d)
+trap cleanup EXIT
+
+cd "$TEMP_D"
+
+machine=$(uname -m)
+arch=$machine
+os=$(uname -s | tr '[:upper:]' '[:lower:]')
+case "$machine" in
+    aarch64) arch=arm64;;
+esac
+[ -d "$HOME/bin" ] || mkdir -p "$HOME/bin"
+
+chainctl config set auth.device-flow chainguard
+chainctl config set default.social-login google-oauth2
+chainctl config set auth.mode headless
+
+gobuilds="
+github.com/jonjohnsonjr/apkrane@latest
+github.com/sigstore/cosign/v2/cmd/cosign@latest
+github.com/google/go-containerregistry/cmd/crane@latest
+github.com/sigstore/gitsign@latest
+"
+
+for u in $gobuilds; do
+    echo ":: building $u"
+    go install "$u"
+done
+
+if ! command -v shellcheck; then
+    scversion="v0.10.0"
+    echo "installing shellcheck $scversion"
+    url="https://github.com/koalaman/shellcheck/releases/download/${scversion?}/shellcheck-${scversion?}.linux.$machine.tar.xz"
+    ( d=$(mktemp -d) &&
+      trap "rm -Rf '$d'" EXIT &&
+       dest="/usr/local/bin" &&
+       cd "$d" && curl -o shellcheck.tar.xz "$url" &&
+       tar -xf shellcheck.tar.xz &&
+       rm -Rf "$dest/shellcheck" &&
+       mkdir -p "$dest" &&
+       sudo mv "shellcheck-$scversion/shellcheck" "$dest"
+    )
+fi
+
+gists="
+login-images:568f03b41efe80f57cea4605beec71ac
+get-sbom:90730d2c62cb5a34adcaccf41d997d2b
+wolfi-tools:0a11e2643b884960c1e5349d4dc0b8c7
+upgrade:2217cde1a876d9d1e014
+"
+
+mkdir -p "$HOME/gists"
+cd "$HOME/gists"
+burl=https://gist.github.com/smoser/
+for gist in $gists; do
+    name="${gist%:*}"
+    hash=${gist#*:}
+    if [ -d "$name" ]; then
+        ( cd "$name"
+          git fetch upstream
+          git checkout upstream/main )
+    else
+        git clone -o upstream "$burl$hash" "$name"
+    fi
+done
