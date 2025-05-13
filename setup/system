@@ -6,48 +6,13 @@ base=$( cd "$mydir/.." && echo "$PWD")
 if [ -d "$base/bin" ]; then
     PATH="$base/bin:$PATH"
 fi
+export PATH
 
-pkgs="
-tmux
-vim-nox
-htop
-less
-patch
-strace
-parallel
-qemu-system-x86
-golang-petname
-docker.io
-build-essential
-make
-jq
-shellcheck
-bubblewrap
-rsync
-python3-venv
-python3-ruamel.yaml
-cloud-image-utils
-"
-
-user="smoser"
-
-timedatectl set-timezone US/Eastern
-apt-get update
-apt-get install --assume-yes $pkgs
-ln -sf golang-petname /usr/bin/petname
-
-adduser $user kvm
-adduser $user docker
-
-if command -v get-go >/dev/null; then
-    get-go
+if command -v apt-get; then
+    "$mydir/setup/system-debian" "$@"
+elif command -v apk; then
+    "$mydir/setup/system-workstation" "$@"
+else
+    echo "FAIL: no system setup for your system"
+    exit 1
 fi
-
-diskshome="/disks/home"
-if [ -d "$diskshome" ]; then
-    if ! [ -d "$diskshome/$user" ]; then
-        mkdir "$diskshome/$user"
-        chown "$user:$user" "$diskshome/$user"
-    fi
-fi
-

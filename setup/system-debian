@@ -1,0 +1,44 @@
+#!/bin/sh
+pkgs="
+tmux
+vim-nox
+htop
+less
+patch
+strace
+parallel
+qemu-system-x86
+golang-petname
+docker.io
+build-essential
+make
+jq
+shellcheck
+bubblewrap
+rsync
+python3-venv
+python3-ruamel.yaml
+cloud-image-utils
+"
+
+user="smoser"
+
+timedatectl set-timezone US/Eastern
+apt-get update
+apt-get install --assume-yes $pkgs
+ln -sf golang-petname /usr/bin/petname
+
+adduser $user kvm
+adduser $user docker
+
+if command -v get-go >/dev/null; then
+    get-go
+fi
+
+diskshome="/disks/home"
+if [ -d "$diskshome" ]; then
+    if ! [ -d "$diskshome/$user" ]; then
+        mkdir "$diskshome/$user"
+        chown "$user:$user" "$diskshome/$user"
+    fi
+fi

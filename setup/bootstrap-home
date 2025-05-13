@@ -8,7 +8,7 @@ cleanup() {
 }
 
 gittilda=https://github.com/smoser/tilda
-h=${1:-/disks/home/smoser}
+h=${1:-$HOME}
 TEMP_D=$(mktemp -d) || exit
 trap cleanup EXIT
 

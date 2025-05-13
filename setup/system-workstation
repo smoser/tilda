@@ -1,0 +1,54 @@
+#!/bin/sh
+TEMP_D=""
+
+pkgs="
+tmux
+cosign
+vim
+htop
+less
+patch
+strace
+parallel
+qemu
+petname
+rsync
+py3-ruamel-yaml
+"
+TEMP_D=$(mktemp -d)
+trap cleanup EXIT
+
+cd "$TEMP_D"
+
+machine=$(uname -m)
+arch=$machine
+os=$(uname -s | tr '[:upper:]' '[:lower:]')
+case "$machine" in
+    aarch64) arch=arm64;;
+esac
+
+cleanup() {
+    [ -n "$TEMP_D" ] || return 0
+    rm -Rf "$TEMP_D"
+}
+
+timedatectl set-timezone US/Eastern
+apk update
+apk add $pkgs
+
+ln -sf vim /usr/bin/vi
+
+if ! command -v shellcheck; then
+    scversion="v0.10.0"
+    echo "installing shellcheck $scversion"
+    url="https://github.com/koalaman/shellcheck/releases/download/${scversion?}/shellcheck-${scversion?}.linux.$machine.tar.xz"
+    ( d=$(mktemp -d) &&
+      trap "rm -Rf '$d'" EXIT &&
+       dest="/usr/local/bin" &&
+       cd "$d" && curl -o shellcheck.tar.xz "$url" &&
+       tar -xf shellcheck.tar.xz &&
+       rm -Rf "$dest/shellcheck" &&
+       mkdir -p "$dest" &&
+       sudo mv "shellcheck-$scversion/shellcheck" "$dest"
+    )
+fi
