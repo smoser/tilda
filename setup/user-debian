@@ -10,6 +10,9 @@ cleanup() {
 TEMP_D=$(mktemp -d)
 trap cleanup EXIT
 
+mkdir -p "$h/bin" || exit 1
+
+
 cd "$TEMP_D"
 
 machine=$(uname -m)
@@ -46,7 +49,6 @@ else
   install -m 0755 chainctl "$HOME/bin/"
 fi
 
-chainctl config set auth.device-flow chainguard
 chainctl config set default.social-login google-oauth2
 chainctl config set auth.mode headless
 
@@ -113,3 +115,16 @@ for gist in $gists; do
         git clone -o upstream "$burl$hash" "$name"
     fi
 done
+
+cd "$h/bin" || exit 1
+for f in ../gists/*/*; do
+    [ -f "$f" -a -x "$f" ] || continue;
+    ln -svf "$f" . || exit 1
+done
+
+mkdir -p "$h/src"
+
+echo "running vim pluginstall"
+vim +'PlugInstall --sync' +qa
+
+echo "all done happy time"

@@ -1,20 +1,4 @@
 #!/bin/sh
-
-pkgs="
-tmux
-cosign
-vim
-htop
-less
-patch
-strace
-parallel
-qemu
-petname
-rsync
-py3-ruamel-yaml
-"
-#
 TEMP_D=""
 
 cleanup() {
@@ -33,9 +17,7 @@ os=$(uname -s | tr '[:upper:]' '[:lower:]')
 case "$machine" in
     aarch64) arch=arm64;;
 esac
-[ -d "$HOME/bin" ] || mkdir -p "$HOME/bin"
 
-chainctl config set auth.device-flow chainguard
 chainctl config set default.social-login google-oauth2
 chainctl config set auth.mode headless
 
@@ -87,3 +69,16 @@ for gist in $gists; do
         git clone -o upstream "$burl$hash" "$name"
     fi
 done
+
+cd "$h/bin" || exit 1
+for f in ../gists/*/*; do
+    [ -f "$f" -a -x "$f" ] || continue;
+    ln -svf "$f" . || exit 1
+done
+
+mkdir -p "$h/src"
+
+echo "running vim pluginstall"
+vim +'PlugInstall --sync' +qa
+
+echo "all done happy time"
