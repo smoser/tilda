@@ -23,9 +23,6 @@ chainctl config set auth.mode headless
 
 gobuilds="
 github.com/jonjohnsonjr/apkrane@latest
-github.com/sigstore/cosign/v2/cmd/cosign@latest
-github.com/google/go-containerregistry/cmd/crane@latest
-github.com/sigstore/gitsign@latest
 "
 
 for u in $gobuilds; do
