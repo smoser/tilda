@@ -33,21 +33,6 @@ for u in $gobuilds; do
     go install "$u"
 done
 
-if ! command -v shellcheck; then
-    scversion="v0.10.0"
-    echo "installing shellcheck $scversion"
-    url="https://github.com/koalaman/shellcheck/releases/download/${scversion?}/shellcheck-${scversion?}.linux.$machine.tar.xz"
-    ( d=$(mktemp -d) &&
-      trap "rm -Rf '$d'" EXIT &&
-       dest="/usr/local/bin" &&
-       cd "$d" && curl -o shellcheck.tar.xz "$url" &&
-       tar -xf shellcheck.tar.xz &&
-       rm -Rf "$dest/shellcheck" &&
-       mkdir -p "$dest" &&
-       sudo mv "shellcheck-$scversion/shellcheck" "$dest"
-    )
-fi
-
 gists="
 login-images:568f03b41efe80f57cea4605beec71ac
 get-sbom:90730d2c62cb5a34adcaccf41d997d2b
