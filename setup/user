@@ -1,0 +1,18 @@
+#!/bin/sh
+[ "$(id -u)" = "0" ] || { echo "not root"; exit 1; }
+
+mydir=${0%/*}
+base=$( cd "$mydir/.." && echo "$PWD")
+if [ -d "$base/bin" ]; then
+    PATH="$base/bin:$PATH"
+fi
+export PATH
+
+if command -v apt-get; then
+    "$mydir/user-debian" "$@"
+elif command -v apk; then
+    "$mydir/user-workstation" "$@"
+else
+    echo "FAIL: no user setup for your system"
+    exit 1
+fi
