@@ -8,6 +8,7 @@ cleanup() {
 
 TEMP_D=$(mktemp -d)
 trap cleanup EXIT
+homedir=$HOME
 
 cd "$TEMP_D"
 
@@ -37,7 +38,7 @@ wolfi-tools:0a11e2643b884960c1e5349d4dc0b8c7
 upgrade:2217cde1a876d9d1e014
 "
 
-mkdir -p "$HOME/gists"
+mkdir -p "$homedir/gists"
 cd "$HOME/gists"
 burl=https://gist.github.com/smoser/
 for gist in $gists; do
@@ -52,13 +53,13 @@ for gist in $gists; do
     fi
 done
 
-cd "$h/bin" || exit 1
+cd "$homedir/bin" || exit 1
 for f in ../gists/*/*; do
     [ -f "$f" -a -x "$f" ] || continue;
     ln -svf "$f" . || exit 1
 done
 
-mkdir -p "$h/src"
+mkdir -p "$homedir/src"
 
 echo "running vim pluginstall"
 vim +'PlugInstall --sync' +qa
