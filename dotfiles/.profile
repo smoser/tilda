@@ -11,6 +11,8 @@ fi
 
 if [ -f "/disks/home/$LOGNAME/.profile.local" ]; then
    . "/disks/home/$LOGNAME/.profile.local"
+elif [ -f "$HOME/.profile.local" ]; then
+   . "$HOME/.profile.local"
 fi
 
 if [ -n "$BASH_VERSION" ]; then
