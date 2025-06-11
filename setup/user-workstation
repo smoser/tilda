@@ -10,6 +10,12 @@ TEMP_D=$(mktemp -d)
 trap cleanup EXIT
 homedir=$HOME
 
+user=$(id -un)
+for g in systemd-journal docker; do
+    sudo adduser "$user" "$g" ||
+        { echo "failed adding $user to $g"; exit 1; }
+done
+
 cd "$TEMP_D"
 
 machine=$(uname -m)
