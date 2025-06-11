@@ -36,6 +36,8 @@ timedatectl set-timezone US/Eastern
 apk update
 apk add $pkgs
 
+chainctl update --yes
+
 ln -sf vim /usr/bin/vi
 
 if ! command -v shellcheck; then
