@@ -18,6 +18,8 @@ Usage: ${0##*/} [options] user [remote-name]
   add a remote named 'remote-name' to 'user' based on
   either 'upstream', 'origin', or 'smoser.
 
+  --repo=REPO    if the users repo is named differently
+
 Basically:
 
    $ ${0##*/} ryaharpe rharper
