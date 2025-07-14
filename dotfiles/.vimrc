@@ -99,12 +99,22 @@ Plug 'leafOfTree/vim-svelte-plugin'
 "*****************************************************************************
 "*****************************************************************************
 
+"" Python-specific plugins
+Plug 'vim-python/python-syntax'     " Improved syntax highlighting
+Plug 'dense-analysis/ale'           " Asynchronous linting/fixing
+
+
 "" Include user's extra bundle
 if filereadable(expand("~/.vimrc.local.bundles"))
   source ~/.vimrc.local.bundles
 endif
 
 call plug#end()
+
+"" Enable ALE for Python with flake8
+"let g:ale_linters = {
+"\   'python': ['flake8']
+"\}
 
 " Required:
 filetype plugin indent on
