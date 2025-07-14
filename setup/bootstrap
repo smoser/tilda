@@ -28,7 +28,16 @@ else
 fi
 
 mkdir -p "$h/bin" || exit 1
-( cd "$h" && ln -svf tilda/dotfiles/.[a-zA-Z]* . ) || exit 1
+mkdir -p "$h/.config" || exit 1
+( cd "$h" && for f in tilda/dotfiles/.[a-zA-Z]*; do
+    f=${f##*/}
+    case "$f" in
+        .config) continue;;
+    esac
+    ln -svf "tilda/dotfiles/$f" . || exit 1
+  done
+) || exit 1
+( cd "$h/.config" && ln -svf ../tilda/dotfiles/.config/[a-zA-Z]* . )
 ( cd "$h/bin" && ln -svf ../tilda/bin/* . ) || exit 1
 
 ( cd "$h/tilda" && ./setup/user ) || fail "setup/user failed"
