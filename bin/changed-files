@@ -21,7 +21,7 @@ if [ "$since" = "merge-base" -o "$since" = "mb" ]; then
         { echo "failed to get merge base" 1>&2; exit 1; }
 fi
 
-out=$(git diff --name-only ${2:+"$2"} "$since") |
+out=$(git diff --name-only ${2:+"$2"} "$since") ||
     { echo "failed[$?]: git diff --stat ${2:+\"$2\"} $since"; exit 1; }
 
 # git diff --stat output looks like
