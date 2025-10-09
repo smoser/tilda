@@ -51,5 +51,6 @@ if [ -t 0 ] && [ -t 1 ] && command -v login-images >/dev/null 2>&1; then
     unset h
 fi
 
+[ -d /local-tmp ] && [ -w /local-tmp ] && export TMPDIR=/local-tmp
 export EDITOR=vi
 PATH=$HOME/bin:$HOME/go/bin:/usr/local/bin:/usr/bin:/usr/sbin:/bin:/sbin

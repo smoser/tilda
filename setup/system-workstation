@@ -40,6 +40,8 @@ chainctl update --yes
 
 ln -sf vim /usr/bin/vi
 
+mkdir /local-tmp && chmod 1777 /local-tmp
+
 if ! command -v shellcheck; then
     scversion="v0.10.0"
     url="https://github.com/koalaman/shellcheck/releases/download/${scversion?}/shellcheck-${scversion?}.linux.$machine.tar.xz"
