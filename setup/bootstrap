@@ -6,6 +6,8 @@ fail() { echo "$@" 1>&2; exit 1; }
 cleanup() {
   rm -Rf "$TEMP_D"
 }
+id=$(id -u) || fail "failed running 'id'"
+[ "$id" = "0" ] && fail "do not run this as root"
 
 gittilda=https://github.com/smoser/tilda
 h=${1:-$HOME}
