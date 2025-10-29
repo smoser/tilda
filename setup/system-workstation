@@ -2,18 +2,23 @@
 TEMP_D=""
 
 pkgs="
-tmux
+blkid
 cosign
-vim
 htop
 less
-patch
-strace
+losetup
 parallel
-qemu
+partx
+patch
 petname
-rsync
 py3-ruamel-yaml
+qemu
+rsync
+sfdisk
+strace
+tmux
+vim
+xfsprogs-extra
 "
 TEMP_D=$(mktemp -d)
 trap cleanup EXIT
