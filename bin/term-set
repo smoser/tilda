@@ -1,0 +1,19 @@
+#!/bin/sh
+Usage() {
+cat <<EOF
+${0##*/} mode
+
+   mode is one of 'light' or 'dark'
+   configure system for light/dark mode
+EOF
+}
+msg() { echo "$@" 1>&2; }
+
+case "$1" in
+    ""|-h|--help) Usage; exit 0;;
+    dark|light) mode="$1";;
+    *) { Usage 1>&2; echo "unknown mode '$1'"; } 1>&2; exit 1;;
+esac
+
+msg "set vim background $mode"
+echo "set background=$mode" > ~/.vim/vimrc.background
