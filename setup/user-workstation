@@ -42,6 +42,7 @@ login-images:568f03b41efe80f57cea4605beec71ac
 get-sbom:90730d2c62cb5a34adcaccf41d997d2b
 wolfi-tools:0a11e2643b884960c1e5349d4dc0b8c7
 upgrade:2217cde1a876d9d1e014
+gcp-local-user:81fdaac93ea26ba2557b71e6423bbfb9
 "
 
 mkdir -p "$homedir/gists"
