@@ -5,6 +5,7 @@ pkgs="
 blkid
 cosign
 htop
+inotify-tools
 less
 losetup
 parallel
