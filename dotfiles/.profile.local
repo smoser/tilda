@@ -30,9 +30,11 @@ if [ -x "$HOME/tilda/setup/user" ] &&
     if "$HOME/tilda/setup/user"; then
         _newgroups=$(sudo -u "$LOGNAME" HOME= --login groups </dev/null)
         if [ "$_newgroups" != "$_oldgroups" ]; then
-            echo "executing new login shell to get new groups"
+            echo "executing new login shell to get new groups [new=$_newgroups old=$_oldgroups]"
             exec sudo -Hu "$LOGNAME" --login \
-                ${SSH_AUTH_SOCK:+"SSH_AUTH_SOCK=$SSH_AUTH_SOCK"}
+                ${SSH_AUTH_SOCK:+"SSH_AUTH_SOCK=$SSH_AUTH_SOCK"} \
+                ${XDG_RUNTIME_DIR:+"XDG_RUNTIME_DIR=$XDG_RUNTIME_DIR"} \
+                ${DBUS_SESSION_BUS_ADDRESS:+"DBUS_SESSION_BUS_ADDRESS=$DBUS_SESSION_BUS_ADDRESS"}
         fi
     else
         echo "Failed user-setup"
