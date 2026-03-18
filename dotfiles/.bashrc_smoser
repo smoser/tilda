@@ -6,6 +6,10 @@ addpath() {
     PATH="$p:$PATH"
 }
 
+set_title() {
+  echo -ne "\033]0;$*\007"
+}
+
 update_ssh_auth() {
     [ -n "$TMUX" ] || { echo "not in tmux"; return 1; }
     local out=""
