@@ -43,10 +43,13 @@ if [ -x "$HOME/tilda/setup/user" ] &&
 fi
 unset _uid _stamp _tstamp
 
-if [ -t 0 ] && [ -t 1 ] && command -v login-images >/dev/null 2>&1; then
+if [ -t 0 ] && [ -t 1 ] && command -v chainctl >/dev/null 2>&1; then
     h=$(date +%H)
     if [ "$h" -lt 18 ]; then
-        login-images --keepalive --until="18:00"
+        # shellcheck disable=SC2046
+        chainctl auth login $(
+            set -- https://console-api.enforce.dev apk.cgr.dev cgr.dev libraries.cgr.dev
+            printf -- "--audience=%s " "$@")
     else
         echo "not login-images, its after 6:00 PM local time"
     fi
