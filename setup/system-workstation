@@ -2,6 +2,7 @@
 TEMP_D=""
 
 pkgs="
+argo-workflows-4.0
 blkid
 cosign
 htop
