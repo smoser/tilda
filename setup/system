@@ -8,6 +8,12 @@ if [ -d "$base/bin" ]; then
 fi
 export PATH
 
+# sudo sysctl -w kernel.dmesg_restrict=0
+if sysctl kernel.dmesg_restrict | grep -q "= 1"; then
+    mkdir -p /etc/sysctl.d/
+    echo "kernel.dmesg_restrict = 0" > /etc/sysctl.d/99-dmesg.conf
+fi
+
 if command -v apt-get; then
     "$mydir/system-debian" "$@"
 elif command -v apk; then
