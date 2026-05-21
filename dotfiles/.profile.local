@@ -47,9 +47,13 @@ if [ -t 0 ] && [ -t 1 ] && command -v chainctl >/dev/null 2>&1; then
     h=$(date +%H)
     if [ "$h" -lt 18 ]; then
         # shellcheck disable=SC2046
-        chainctl auth login $(
-            set -- https://console-api.enforce.dev apk.cgr.dev cgr.dev libraries.cgr.dev
-            printf -- "--audience=%s " "$@")
+        if command -v chainctl-login ; then
+            chainctl-login --no-logout
+        else
+            chainctl auth login $(
+                set -- https://console-api.enforce.dev apk.cgr.dev cgr.dev libraries.cgr.dev
+                printf -- "--audience=%s " "$@")
+        fi
     else
         echo "not login-images, its after 6:00 PM local time"
     fi
@@ -58,4 +62,4 @@ fi
 
 [ -d /local-tmp ] && [ -w /local-tmp ] && export TMPDIR=/local-tmp
 export EDITOR=vi
-PATH=$HOME/bin:$HOME/.local/bin:$HOME/go/bin:/usr/local/bin:/usr/bin
+PATH=$HOME/bin:$HOME/.local/bin:/home/linuxbrew/.linuxbrew/bin:$HOME/go/bin:/usr/local/bin:/usr/bin
