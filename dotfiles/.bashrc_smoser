@@ -10,6 +10,14 @@ set_title() {
   echo -ne "\033]0;$*\007"
 }
 
+ps1_short() {
+  PS1=${PS1//\\w/\\W}
+}
+
+ps1_long()  {
+  PS1=${PS1//\\W/\\w}
+}
+
 update_ssh_auth() {
     [ -n "$TMUX" ] || { echo "not in tmux"; return 1; }
     local out=""
