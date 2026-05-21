@@ -28,9 +28,7 @@ esac
 chainctl config set default.social-login google-oauth2
 chainctl config set auth.mode headless
 
-gobuilds="
-github.com/jonjohnsonjr/apkrane@latest
-"
+gobuilds="" #github.com/jonjohnsonjr/apkrane@latest
 
 for u in $gobuilds; do
     echo ":: building $u"
