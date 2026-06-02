@@ -21,6 +21,8 @@ strace
 tmux
 vim
 xfsprogs-extra
+libkrun
+libkrunfw
 "
 TEMP_D=$(mktemp -d)
 trap cleanup EXIT
