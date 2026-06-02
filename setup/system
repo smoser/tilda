@@ -9,9 +9,14 @@ fi
 export PATH
 
 # sudo sysctl -w kernel.dmesg_restrict=0
-if sysctl kernel.dmesg_restrict | grep -q "= 1"; then
+v="kernel.dmesg_restrict = 0"
+if sysctl kernel.dmesg_restrict | grep -q "$v"; then
+    echo "dmesg_restrict already disabled"
+else
+    sysctl -w "$v"
     mkdir -p /etc/sysctl.d/
-    echo "kernel.dmesg_restrict = 0" > /etc/sysctl.d/99-dmesg.conf
+    printf "%s\n" "$v" > /etc/sysctl.d/99-dmesg.conf
+    echo "dmesg_restrict disabled"
 fi
 
 if command -v apt-get; then
