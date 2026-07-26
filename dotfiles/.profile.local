@@ -63,3 +63,8 @@ fi
 [ -d /local-tmp ] && [ -w /local-tmp ] && export TMPDIR=/local-tmp
 export EDITOR=vi
 PATH=$HOME/bin:$HOME/.local/bin:/home/linuxbrew/.linuxbrew/bin:$HOME/go/bin:/usr/local/bin:/usr/bin
+export GOOGLE_CLOUD_PROJECT=smoser
+export CG_EMAIL=scott.moser@chainguard.dev
+
+# headless box: relay URLs to the laptop's browser (see ~/bin/open-url)
+#export BROWSER=$HOME/bin/open-url
