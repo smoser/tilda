@@ -1,2 +1,30 @@
 #!/bin/sh
-exec tmux new-session -A -s ${1:-smoser}
+# shellcheck disable=SC3043
+_maybe_update_ssh_auth() {
+    # if SSH_AUTH_SOCK is set, then we update a link in ~/.ssh/agent/current.tmux
+    # and use that path for tmux's environment.
+    local linkp="$HOME/.ssh/agent/current.tmux" mysock="$SSH_AUTH_SOCK"
+    if [ "$TMG_SSH_UPDATE" = "false" ]; then
+        return 0
+    fi
+    [ "$mysock" = "$linkp" ] && return 0
+    [ -n "$mysock" ] || return 0
+    [ -S "$mysock" ] || {
+        echo "SSH_AUTH_SOCK not a socket [$mysock]" 1>&2
+        return 1
+    }
+    ln -sf "$mysock" "$linkp" || {
+        echo "failed ln -sf $mysock $linkp" 1>&2
+        return 1
+    }
+    export SSH_AUTH_SOCK="$linkp"
+    printf "%s\n" "updated tmux link for SSH_AUTH_SOCK" \
+        "  ~${linkp#"$HOME"} -> $mysock" 1>&2
+}
+
+if [ "$1" = "list" ] || [ "$1" = "ls" ]; then
+    exec tmux ls
+fi
+
+_maybe_update_ssh_auth
+exec tmux new-session -A -s "${1:-smoser}"
