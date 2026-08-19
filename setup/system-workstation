@@ -21,6 +21,7 @@ strace
 tmux
 vim
 xfsprogs-extra
+libkrunfw-microvm
 libkrun-dev
 libkrunfw-dev
 "
