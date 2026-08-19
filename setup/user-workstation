@@ -66,6 +66,24 @@ done
 
 mkdir -p "$homedir/src"
 
+tmux_plugins="
+tmux-resurrect:https://github.com/tmux-plugins/tmux-resurrect
+tmux-continuum:https://github.com/tmux-plugins/tmux-continuum
+"
+
+echo "installing tmux plugins"
+mkdir -p "$homedir/.tmux/plugins" || exit 1
+cd "$homedir/.tmux/plugins" || exit 1
+for p in $tmux_plugins; do
+    name="${p%%:*}"
+    url=${p#*:}
+    if [ -d "$name" ]; then
+        ( cd "$name" && git pull --ff-only ) || exit 1
+    else
+        git clone -o upstream "$url" "$name" || exit 1
+    fi
+done
+
 echo "running vim pluginstall"
 vim +'PlugInstall --sync' +qa
 
