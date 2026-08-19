@@ -18,9 +18,27 @@ ps1_long()  {
   PS1=${PS1//\\W/\\w}
 }
 
-update_ssh_auth() {
+ssh_auth_persist() {
+    local val="$1" myid="tmux.update_ssh_auth" sockpath=""
+    if [ $# -eq 0 ]; then
+        val=${SSH_AUTH_SOCK}
+    fi
+    sockpath="$val"
+    [ -S "$sockpath" ] || {
+        echo "SSH_AUTH_SOCK=$sockpath in tmux, but $sockpath not a socket" 1>&2
+        return 1
+    }
+    mysock=~/".ssh/agent/current.$myid"
+    ln -sf "$sockpath" "$mysock" || {
+        echo "failed ln $sockpath $mysock" 1>&2
+        return 1
+    }
+    echo "$mysock -> $sockpath"
+}
+
+ssh_auth_from_tmux(){
     [ -n "$TMUX" ] || { echo "not in tmux"; return 1; }
-    local out=""
+    local out="" sockpath="" mysock=""
     out=$(tmux show-environment SSH_AUTH_SOCK) || {
         echo "failed to show environment SSH_AUTH_SOCK $?" 1>&2
         return 1
@@ -28,11 +46,16 @@ update_ssh_auth() {
     case "$out" in
         "SSH_AUTH_SOCK=$SSH_AUTH_SOCK")
             echo "no SSH_AUTH_SOCK update needed ($SSH_AUTH_SOCK)" 1>&2
-            return 0;;
+            ;;
+        SSH_AUTH_SOCK=*)
+            mysock=${out#SSH_AUTH_SOCK=}
+            export SSH_AUTH_SOCK="$mysock"
+            echo "updated SSH_AUTH_SOCK=$mysock"
+            ;;
         -SSH_AUTH_SOCK)
             echo "no SSH_AUTH_SOCK in tmux environment"
             return 0;;
+        *) echo "bad output of tmux show-environment SSH_AUTH_SOCK"
+           return 1;;
     esac
-    export SSH_AUTH_SOCK=${out#SSH_AUTH_SOCK=}
-    echo "updated SSH_AUTH_SOCK: $SSH_AUTH_SOCK"
 }
