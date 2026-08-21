@@ -1,0 +1,120 @@
+#!/usr/bin/env python3
+"""Resume the most recent Claude Code session for the current directory.
+
+Used as the tmux-resurrect restore command for 'claude' panes (see
+@resurrect-processes in ~/.tmux.conf) so continuum's unattended restore
+after the nightly reboot doesn't hit the interactive --resume picker.
+
+tmux-resurrect's override mechanism discards the original pane command
+for any matched process and runs this script's name instead, so the
+actual flags a given pane was started with (e.g. --permission-mode=auto)
+aren't passed in as arguments. They're recovered here by re-reading
+tmux-resurrect's own save file, which records the real pane command line
+per directory; '--resume'/'-r <id>' in it is replaced with '-r <id>' for
+the session found here. A recovered --permission-mode=auto runs through
+~/bin/claude-auto instead of plain 'claude'. If no saved command is
+found for this directory, falls back to plain 'claude'.
+"""
+import os
+import re
+import shlex
+import sys
+
+PROJECTS = os.path.expanduser("~/.claude/projects")
+RESURRECT_DIR = os.path.expanduser("~/.local/share/tmux/resurrect")
+
+
+def slug(path):
+    return re.sub(r"[^a-zA-Z0-9]", "-", os.path.abspath(path))
+
+
+def latest_session(path):
+    d = os.path.join(PROJECTS, slug(path))
+    try:
+        names = [n for n in os.listdir(d) if n.endswith(".jsonl")]
+    except OSError:
+        return None
+    best = None
+    for n in names:
+        full = os.path.join(d, n)
+        try:
+            mtime = os.path.getmtime(full)
+        except OSError:
+            continue
+        if best is None or mtime > best[0]:
+            best = (mtime, n[: -len(".jsonl")])
+    return best[1] if best else None
+
+
+def saved_claude_flags(path):
+    """Flags (minus argv[0] and any --resume/-r) from the last saved pane
+    command line recorded for this directory, or None if none is found."""
+    save = os.path.join(RESURRECT_DIR, "last")
+    try:
+        f = open(save, errors="replace")
+    except OSError:
+        return None
+    with f:
+        for line in f:
+            fields = line.rstrip("\n").split("\t")
+            if len(fields) < 10 or fields[0] != "pane":
+                continue
+            pane_path = fields[7]
+            proc_name = fields[9]
+            full_cmd = fields[10] if len(fields) > 10 else ""
+            if pane_path.lstrip(":") != os.path.abspath(path):
+                continue
+            if proc_name != "claude":
+                continue
+            full_cmd = full_cmd.lstrip(":")
+            if not full_cmd:
+                continue
+            args = shlex.split(full_cmd)[1:]  # drop argv[0] ("claude")
+            out = []
+            skip_next_value = False
+            for i, a in enumerate(args):
+                if skip_next_value:
+                    skip_next_value = False
+                    continue
+                if a in ("--resume", "-r"):
+                    nxt = args[i + 1] if i + 1 < len(args) else None
+                    if nxt and not nxt.startswith("-"):
+                        skip_next_value = True
+                    continue
+                out.append(a)
+            return out
+    return None
+
+
+def strip_auto_mode(flags):
+    """Remove any --permission-mode=auto (or split-form) flag, reporting
+    whether one was present."""
+    out, is_auto, skip_next = [], False, False
+    for i, a in enumerate(flags):
+        if skip_next:
+            skip_next = False
+            continue
+        if a == "--permission-mode=auto":
+            is_auto = True
+            continue
+        if a == "--permission-mode" and flags[i + 1 : i + 2] == ["auto"]:
+            is_auto, skip_next = True, True
+            continue
+        out.append(a)
+    return out, is_auto
+
+
+def main():
+    cwd = os.getcwd()
+    flags = saved_claude_flags(cwd)
+    flags, is_auto = strip_auto_mode(flags if flags is not None else [])
+    # claude-auto already adds --permission-mode=auto itself.
+    cmd = ["claude-auto" if is_auto else "claude"] + flags
+    sid = latest_session(cwd)
+    if sid:
+        cmd += ["-r", sid]
+    os.execvp(cmd[0], cmd)
+
+
+if __name__ == "__main__":
+    sys.exit(main())
