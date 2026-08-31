@@ -1,0 +1,99 @@
+#!/bin/sh
+# shellcheck disable=SC3043
+# Mint a GitHub token for stereo melange builds, without a browser.
+#
+# stereo's cmd/stereo/tokens.go calls `chainctl auth octo-sts`, which does its
+# own interactive login unless handed an identity token. chainctl-auth-refreshd
+# already keeps one alive for https://octo-sts.dev, so pass that instead.
+# Point stereo at the result with $STEREO_GITHUB_TOKEN_FILE; it re-reads the
+# file on every call, so rotating underneath a running build is fine.
+#
+# octo-sts hands back a GitHub App installation token, which GitHub expires
+# after an hour. Refresh well inside that -- see stereo-gh-token.timer.
+
+AUDIENCE="${STEREO_GH_AUDIENCE:-https://octo-sts.dev}"
+IDENTITY="${STEREO_GH_IDENTITY:-guarded-package-repos}"
+SCOPE="${STEREO_GH_SCOPE:-chainguard-dev}"
+TOKEN_FILE="${STEREO_GITHUB_TOKEN_FILE:-${XDG_CACHE_HOME:-$HOME/.cache}/stereo/github.token}"
+
+# A silent interactive fallback would hang the timer forever; fail fast.
+TIMEOUT="${STEREO_GH_TIMEOUT:-45}"
+
+stderr() { echo "$@" 1>&2; }
+fail() { stderr "$@"; exit 1; }
+
+# mint writes the token to stdout. Nothing here puts token bytes on a command
+# line: /proc/<pid>/cmdline is world-readable, so --identity-token gets a path.
+mint() {
+    local dir="" idtok="" out="" rc=0
+    dir=$(mktemp -d) || fail "mktemp -d failed"
+    chmod 700 "$dir" || { rm -rf "$dir"; fail "chmod $dir failed"; }
+    idtok="$dir/id.jwt"
+    out="$dir/gh.token"
+
+    ( umask 066 && timeout "$TIMEOUT" chainctl auth token \
+        --audience="$AUDIENCE" > "$idtok" )
+    rc=$?
+    if [ $rc -ne 0 ] || [ ! -s "$idtok" ]; then
+        rm -rf "$dir"
+        fail "chainctl auth token --audience=$AUDIENCE failed (rc=$rc);" \
+             "is $AUDIENCE in ~/.config/chainctl/audiences and is" \
+             "chainctl-auth-refresh.service running?"
+    fi
+
+    ( umask 066 && timeout "$TIMEOUT" chainctl auth octo-sts \
+        --identity-token="$idtok" --identity="$IDENTITY" \
+        --scope="$SCOPE" > "$out" )
+    rc=$?
+    if [ $rc -ne 0 ] || [ ! -s "$out" ]; then
+        rm -rf "$dir"
+        fail "chainctl auth octo-sts --identity=$IDENTITY --scope=$SCOPE" \
+             "failed (rc=$rc)"
+    fi
+
+    # Refuse to install anything that is not an installation token, so a stray
+    # error message on stdout cannot masquerade as a credential.
+    if ! grep -q '^gh[a-z]_' "$out"; then
+        rm -rf "$dir"
+        fail "octo-sts output does not look like a GitHub token; not installing"
+    fi
+
+    cat "$out"
+    rm -rf "$dir"
+}
+
+update() {
+    local quiet="false"
+    [ "$1" = "--quiet" ] && quiet=true && shift
+    local dir="" tmp=""
+    dir=${TOKEN_FILE%/*}
+    [ "$dir" = "$TOKEN_FILE" ] && dir="."
+    mkdir -p "$dir" || fail "mkdir -p $dir failed"
+    tmp="$TOKEN_FILE.tmp.$$"
+    # Install atomically: a build re-reading the file must never see a partial
+    # token. Same directory, so the rename cannot cross filesystems.
+    ( umask 066 && mint > "$tmp" ) || { rm -f "$tmp"; exit 1; }
+    mv "$tmp" "$TOKEN_FILE" || { rm -f "$tmp"; fail "mv into $TOKEN_FILE failed"; }
+    [ "$quiet" = "true" ] || echo "wrote $TOKEN_FILE ($(wc -c < "$TOKEN_FILE") bytes)"
+}
+
+usage() {
+    cat <<EOF
+Usage: ${0##*/} [update [--quiet] | print | path | -h]
+
+  update   mint and install into \$STEREO_GITHUB_TOKEN_FILE (default)
+  print    mint and write to stdout, installing nothing
+  path     print the token file path and exit
+
+Env: STEREO_GITHUB_TOKEN_FILE STEREO_GH_AUDIENCE STEREO_GH_IDENTITY
+     STEREO_GH_SCOPE STEREO_GH_TIMEOUT
+EOF
+}
+
+case "${1:-update}" in
+    update) shift; update "$@";;
+    print) mint;;
+    path) echo "$TOKEN_FILE";;
+    -h|--help) usage;;
+    *) usage 1>&2; exit 1;;
+esac

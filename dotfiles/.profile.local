@@ -67,5 +67,9 @@ export GOOGLE_CLOUD_PROJECT=smoser
 export CG_EMAIL=scott.moser@chainguard.dev
 export CG_WORK_UX=2
 
+# stereo builds read this file per-call; stereo-gh-token.timer rotates it
+# (octo-sts GitHub tokens expire hourly). See ~/tilda/bin/stereo-gh-token.
+export STEREO_GITHUB_TOKEN_FILE=$HOME/.cache/stereo/github.token
+
 # headless box: relay URLs to the laptop's browser (see ~/bin/open-url)
 #export BROWSER=$HOME/bin/open-url
