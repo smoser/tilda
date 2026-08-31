@@ -84,6 +84,11 @@ for p in $tmux_plugins; do
     fi
 done
 
+# resurrect looks for restore strategies only inside its own tree; an
+# untracked symlink there survives the git pull above.
+ln -svf "$homedir/tilda/tmux/claude_resume.sh" \
+    "$homedir/.tmux/plugins/tmux-resurrect/strategies/claude_resume.sh" || exit 1
+
 echo "running vim pluginstall"
 vim +'PlugInstall --sync' +qa
 

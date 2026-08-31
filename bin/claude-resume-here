@@ -2,18 +2,18 @@
 """Resume the most recent Claude Code session for the current directory.
 
 Used as the tmux-resurrect restore command for 'claude' panes (see
-@resurrect-processes in ~/.tmux.conf) so continuum's unattended restore
-after the nightly reboot doesn't hit the interactive --resume picker.
+@resurrect-strategy-claude in ~/.tmux.conf and tilda/tmux/claude_resume.sh)
+so continuum's unattended restore after the nightly reboot doesn't hit the
+interactive --resume picker.
 
-tmux-resurrect's override mechanism discards the original pane command
-for any matched process and runs this script's name instead, so the
-actual flags a given pane was started with (e.g. --permission-mode=auto)
-aren't passed in as arguments. They're recovered here by re-reading
-tmux-resurrect's own save file, which records the real pane command line
-per directory; '--resume'/'-r <id>' in it is replaced with '-r <id>' for
-the session found here. A recovered --permission-mode=auto runs through
-~/bin/claude-auto instead of plain 'claude'. If no saved command is
-found for this directory, falls back to plain 'claude'.
+The restore runs this script with no arguments, so the flags a given pane
+was started with (e.g. --permission-mode=auto) are recovered here by
+re-reading tmux-resurrect's own save file, which records the real pane
+command line per directory; '--resume'/'-r <id>' in it is replaced with
+'-r <id>' for the session found here, and a trailing prompt argument is
+dropped. A recovered --permission-mode=auto runs through ~/bin/claude-auto
+instead of plain 'claude'. If no saved command is found for this
+directory, falls back to plain 'claude'.
 """
 import os
 import re
@@ -46,9 +46,41 @@ def latest_session(path):
     return best[1] if best else None
 
 
+def recover_flags(full_cmd):
+    """The option arguments of a saved 'claude ...' command line: argv[0],
+    any --resume/-r, and the trailing prompt are dropped.  A prompt is
+    recognized as an argument holding whitespace, which distinguishes it
+    from the value of a preceding option.  None if the line is unparsable."""
+    try:
+        args = shlex.split(full_cmd)[1:]  # drop argv[0] ("claude")
+    except ValueError:
+        return None
+    out = []
+    skip_next = False
+    for i, a in enumerate(args):
+        if skip_next:
+            skip_next = False
+            continue
+        if a == "--":
+            break
+        nxt = args[i + 1] if i + 1 < len(args) else None
+        takes_value = nxt is not None and not nxt.startswith("-") and \
+            not nxt.split()[1:]
+        if a in ("--resume", "-r"):
+            skip_next = takes_value
+            continue
+        if not a.startswith("-"):
+            break  # the prompt, or something else positional
+        out.append(a)
+        if takes_value:
+            out.append(nxt)
+            skip_next = True
+    return out
+
+
 def saved_claude_flags(path):
-    """Flags (minus argv[0] and any --resume/-r) from the last saved pane
-    command line recorded for this directory, or None if none is found."""
+    """recover_flags() of the last saved pane command line recorded for
+    this directory, or None if none is found."""
     save = os.path.join(RESURRECT_DIR, "last")
     try:
         f = open(save, errors="replace")
@@ -69,20 +101,7 @@ def saved_claude_flags(path):
             full_cmd = full_cmd.lstrip(":")
             if not full_cmd:
                 continue
-            args = shlex.split(full_cmd)[1:]  # drop argv[0] ("claude")
-            out = []
-            skip_next_value = False
-            for i, a in enumerate(args):
-                if skip_next_value:
-                    skip_next_value = False
-                    continue
-                if a in ("--resume", "-r"):
-                    nxt = args[i + 1] if i + 1 < len(args) else None
-                    if nxt and not nxt.startswith("-"):
-                        skip_next_value = True
-                    continue
-                out.append(a)
-            return out
+            return recover_flags(full_cmd)
     return None
 
 
