@@ -1,0 +1,10 @@
+[Unit]
+Description=Mint a GitHub token for stereo builds via octo-sts
+# The identity token comes from the chainctl cache this keeps warm.
+After=chainctl-auth-refresh.service
+
+[Service]
+Type=oneshot
+# The default user-unit PATH lacks ~/bin, and the script needs chainctl.
+Environment=PATH=%h/bin:/usr/local/bin:/usr/bin:/bin
+ExecStart=%h/bin/stereo-gh-token update --quiet

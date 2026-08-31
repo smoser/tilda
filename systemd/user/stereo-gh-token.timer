@@ -1,0 +1,13 @@
+[Unit]
+Description=Refresh the stereo octo-sts GitHub token
+
+[Timer]
+# octo-sts returns a GitHub App installation token; GitHub expires those after
+# one hour, so refresh with a wide margin.
+OnStartupSec=1min
+OnUnitActiveSec=45min
+AccuracySec=1min
+Persistent=true
+
+[Install]
+WantedBy=timers.target
