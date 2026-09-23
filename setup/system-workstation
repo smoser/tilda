@@ -2,7 +2,6 @@
 TEMP_D=""
 
 pkgs="
-argo-workflows-4.0
 blkid
 cosign
 htop
@@ -13,7 +12,6 @@ parallel
 partx
 patch
 petname
-py3-ruamel-yaml
 qemu
 rsync
 sfdisk
@@ -21,9 +19,7 @@ strace
 tmux
 vim
 xfsprogs-extra
-libkrunfw-microvm
-libkrun-dev
-libkrunfw-dev
+libkrun
 "
 TEMP_D=$(mktemp -d)
 trap cleanup EXIT
