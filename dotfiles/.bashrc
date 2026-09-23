@@ -118,8 +118,9 @@ if ! shopt -oq posix; then
 fi
 
 # changes from stock ubuntu below.
-if [ -f ~/.bashrc_smoser ]; then
-    . ~/.bashrc_smoser
-fi
+for f in ~/.bashrc_smoser*; do
+    [ -f "$f" ] || continue
+    . "$f"
+done
 
 set -o vi
