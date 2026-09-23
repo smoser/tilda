@@ -1,0 +1,20 @@
+#!/bin/sh
+# Run 'resize-window -A' (the prefix-F binding) on every window in a session.
+# Usage: tmux-resize-all [session]   (default: current session)
+#
+# To bind it to prefix Alt-F, add to .tmux.conf:
+#   bind-key M-F run-shell "tmux-resize-all '#{session_id}'"
+
+set -e
+if [ -n "$1" ]; then
+    target="$1"
+elif [ -n "$TMUX" ]; then
+    target=$(tmux display-message -p '#{session_id}')
+else
+    echo "usage: ${0##*/} [session] (or run inside tmux)" >&2
+    exit 1
+fi
+
+tmux list-windows -t "$target" -F '#{window_id}' | while read -r win; do
+    tmux resize-window -A -t "$win"
+done
