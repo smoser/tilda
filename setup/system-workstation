@@ -47,3 +47,7 @@ chainctl update --yes
 ln -sf vim /usr/bin/vi
 
 mkdir -p /local-tmp && chmod 1777 /local-tmp
+
+# libkrun guest RAM is a shared memfd, so without shmem THP every first
+# touch is a 4K fault; guest boot measured ~4.8s vs ~0.8s with it.
+echo within_size > /sys/kernel/mm/transparent_hugepage/shmem_enabled
