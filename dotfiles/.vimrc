@@ -172,6 +172,17 @@ set ruler
 set number
 
 let no_buffers_menu=1
+
+" vim-gitgutter defines diffAdded/diffChanged/diffRemoved from its sign
+" colors before the diff syntax loads; under molokai that is ctermfg=0, so
+" +/- lines in .diff files render black on black. Point them back at vim's
+" Added/Changed/Removed groups.
+augroup diff_colors
+  autocmd!
+  autocmd VimEnter,ColorScheme * hi! link diffAdded Added
+        \ | hi! link diffRemoved Removed | hi! link diffChanged Changed
+augroup END
+
 colorscheme molokai
 
 
