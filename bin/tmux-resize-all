@@ -15,6 +15,10 @@ else
     exit 1
 fi
 
-tmux list-windows -t "$target" -F '#{window_id}' | while read -r win; do
-    tmux resize-window -A -t "$win"
+windows=$(tmux list-windows -t "$target" -F '#{window_id}')
+set -- $windows
+windows="$*"
+for win in "$@"; do
+    tmux resize-window -A -t "$win" || { echo "resize $win failed"; exit 1; }
 done
+echo "$(date -R) resized $target [$windows]" >>/tmp/resize.log
