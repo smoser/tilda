@@ -37,7 +37,7 @@ fi
 
 # set a fancy prompt (non-color, unless we know we "want" color)
 case "$TERM" in
-    xterm-color|*-256color|alacritty|xterm-kitty) color_prompt=yes;;
+    xterm-color|*-256color|alacritty|xterm-kitty|xterm-ghostty) color_prompt=yes;;
 esac
 
 # uncomment for a colored prompt, if the terminal has the capability; turned
@@ -56,9 +56,21 @@ if [ -n "$force_color_prompt" ]; then
     fi
 fi
 
+smhost=$HOSTNAME
+case "$smhost" in
+    scott-moser-cgw-work-*) smhost=w-${smhost#scott-moser-cgw-work-};;
+    scott-moser-cgw-*) smhost=${smhost#scott-moser-cgw-};;
+esac
+smuser=$USER
+case "$smuser" in
+    scott_moser_chainguard_dev) smuser="smoser";;
+esac
+# starship has no pattern-based hostname aliases; reuse the short name.
+export STARSHIP_SMHOST="$smhost"
+
 if [ "$color_prompt" = yes ]; then
     PS1='${debian_chroot:+($debian_chroot)}\[\033[01;32m\]\u@\h\[\033[00m\]:\[\033[01;34m\]\w\[\033[00m\]\$ '
-    PS1='${debian_chroot:+($debian_chroot)}\[\033[01;32m\]smoser@work\[\033[00m\]:\[\033[01;34m\]\w\[\033[00m\]\$ '
+    PS1='${debian_chroot:+($debian_chroot)}\[\033[01;32m\]$smuser@$smhost\[\033[00m\]:\[\033[01;34m\]\w\[\033[00m\]\$ '
 else
     PS1='${debian_chroot:+($debian_chroot)}\u@\h:\w\$ '
 fi
@@ -66,8 +78,8 @@ unset color_prompt force_color_prompt
 
 # If this is an xterm set the title to user@host:dir
 case "$TERM" in
-xterm*|rxvt*)
-    PS1="\[\e]0;${debian_chroot:+($debian_chroot)}\u@\h: \w\a\]$PS1"
+xterm*|rxvt*|tmux*)
+    PS1='\[\e]0;${debian_chroot:+($debian_chroot)}'"$smuser@$smhost: "'\w\a\]'"$PS1"
     ;;
 *)
     ;;
@@ -124,3 +136,10 @@ for f in ~/.bashrc_smoser*; do
 done
 
 set -o vi
+
+if command -v starship >/dev/null 2>&1; then
+    # starship replaces PS1, so keep the xterm/tmux title separately.
+    _sm_set_title() { printf '\033]0;%s\007' "$smuser@$smhost: ${PWD/#$HOME/\~}"; }
+    starship_precmd_user_func=_sm_set_title
+    eval "$(starship init bash)"
+fi
