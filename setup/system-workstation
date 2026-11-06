@@ -6,7 +6,9 @@ blkid
 cosign
 htop
 inotify-tools
+git-daemon
 less
+libcap-utils
 losetup
 parallel
 partx
