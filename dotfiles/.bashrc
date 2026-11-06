@@ -143,3 +143,13 @@ if command -v starship >/dev/null 2>&1; then
     starship_precmd_user_func=_sm_set_title
     eval "$(starship init bash)"
 fi
+# lazarus: put the command a restored pane was running into history.
+if [ -n "${LAZARUS_RESTORED_CMD-}" ]; then
+    __lazarus_hist() {
+        history -s -- "$LAZARUS_RESTORED_CMD"
+        unset LAZARUS_RESTORED_CMD
+        PROMPT_COMMAND=${PROMPT_COMMAND#__lazarus_hist;}
+        unset -f __lazarus_hist
+    }
+    PROMPT_COMMAND="__lazarus_hist;${PROMPT_COMMAND-}"
+fi
