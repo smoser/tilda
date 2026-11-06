@@ -72,5 +72,8 @@ export CG_WORK_UX=2
 # (octo-sts GitHub tokens expire hourly). See ~/tilda/bin/stereo-gh-token.
 export STEREO_GITHUB_TOKEN_FILE=$HOME/.cache/stereo/github.token
 
+# for chainctl develop ... proably needs to be dropped sometime
+export CHAINCTL_SANDBOX_GROUP=55a58bc8e4e3ddcf5bbe73ab090878fa35d0a5a9
+
 # headless box: relay URLs to the laptop's browser (see ~/bin/open-url)
 #export BROWSER=$HOME/bin/open-url
