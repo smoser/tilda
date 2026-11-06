@@ -7,11 +7,13 @@
 [url "ssh://git@github.com/"]
 insteadOf = https://github.com/
 
-#[gitsign]
-#tokenProvider = google-workload-identity
+[gitsign]
+	tokenProvider = google-workload-identity
 [credential "https://github.com"]
 	helper = 
 	helper = !/usr/bin/gh auth git-credential
 [credential "https://gist.github.com"]
 	helper = 
 	helper = !/usr/bin/gh auth git-credential
+[init]
+	defaultBranch = main
