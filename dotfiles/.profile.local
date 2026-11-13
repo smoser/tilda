@@ -64,3 +64,9 @@ export CHAINCTL_SANDBOX_GROUP=55a58bc8e4e3ddcf5bbe73ab090878fa35d0a5a9
 
 # headless box: relay URLs to the laptop browser (see ~/bin/ssh-url-open)
 export BROWSER=$HOME/bin/xdg-open
+
+# rex passes OSC 8 links through, but Claude Code doesn't know that, so
+# it only renders markdown links as hyperlinks when forced.
+if [ "$TERM_PROGRAM" = "rex" ]; then
+    export FORCE_HYPERLINK=1
+fi
