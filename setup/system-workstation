@@ -2,6 +2,7 @@
 TEMP_D=""
 
 pkgs="
+acl
 blkid
 cosign
 htop
@@ -53,3 +54,12 @@ mkdir -p /local-tmp && chmod 1777 /local-tmp
 # libkrun guest RAM is a shared memfd, so without shmem THP every first
 # touch is a 4K fault; guest boot measured ~4.8s vs ~0.8s with it.
 echo within_size > /sys/kernel/mm/transparent_hugepage/shmem_enabled
+
+# Grant docker socket access by ACL as well as by group, so processes
+# started before user setup added the group (systemd --user, rex) work.
+user=${SUDO_USER:?"run via sudo so SUDO_USER names the user"}
+mkdir -p /run/systemd/system/docker.socket.d
+printf '[Socket]\nExecStartPost=/usr/bin/setfacl -m u:%s:rw /run/docker.sock\n' \
+    "$user" > /run/systemd/system/docker.socket.d/user-acl.conf
+systemctl daemon-reload
+setfacl -m u:"$user":rw /run/docker.sock
