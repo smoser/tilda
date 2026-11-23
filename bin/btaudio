@@ -1,0 +1,628 @@
+#!/usr/bin/env python3
+"""btaudio - switch audio outputs/inputs/profiles on PipeWire/PulseAudio.
+
+  btaudio output <name>     set default output (sink)
+  btaudio input <name>      set default input (source)
+  btaudio profile <name>    apply a named profile (output + input + card profiles)
+  btaudio list              show devices, names and profiles
+  btaudio confui            curses UI to manage names and profiles
+
+A *name* is an alias: a case-insensitive regex matched against a device's
+node/card name, description and vendor, and/or "any bluetooth device".
+That lets one name like 'headphone' mean "whichever bluetooth headset is
+connected right now".  <name> may also be a plain substring of a device
+description/name, even if no alias exists.
+
+Config: $XDG_CONFIG_HOME/btaudio/config.json (default ~/.config/btaudio)
+Requires only python3 (stdlib) and `pactl` (pipewire-pulse or pulseaudio).
+"""
+import argparse
+import json
+import os
+import re
+import subprocess
+import sys
+import time
+
+CONFIG_PATH = os.path.join(
+    os.environ.get("XDG_CONFIG_HOME") or os.path.expanduser("~/.config"),
+    "btaudio", "config.json")
+
+DEFAULT_CONFIG = {
+    "names": {
+        "blue": {"match": "Blue_Microphones"},
+        "lg": {"match": "DisplayPort 1 Output"},
+        "acer": {"match": "DisplayPort 2 Output"},
+        "headphone": {"bluetooth": True},
+    },
+    "profiles": {
+        "lg-mic": {"output": "lg", "input": "blue",
+                   "card_profiles": {"headphone": ["a2dp-sink"]}},
+        "hp-mic": {"output": "headphone", "input": "blue",
+                   "card_profiles": {"headphone": ["a2dp-sink"]}},
+        "hp-hp": {"output": "headphone", "input": "headphone",
+                  "card_profiles": {"headphone": [
+                      "headset-head-unit", "headset-head-unit-cvsd"]}},
+    },
+}
+
+
+class Error(Exception):
+    pass
+
+
+# ---------------------------------------------------------------- config
+
+def load_config():
+    try:
+        with open(CONFIG_PATH) as fp:
+            cfg = json.load(fp)
+    except FileNotFoundError:
+        cfg = json.loads(json.dumps(DEFAULT_CONFIG))
+        save_config(cfg)
+        print("btaudio: wrote default config to %s" % CONFIG_PATH,
+              file=sys.stderr)
+    cfg.setdefault("names", {})
+    cfg.setdefault("profiles", {})
+    return cfg
+
+
+def save_config(cfg):
+    os.makedirs(os.path.dirname(CONFIG_PATH), exist_ok=True)
+    tmp = CONFIG_PATH + ".tmp"
+    with open(tmp, "w") as fp:
+        json.dump(cfg, fp, indent=2, sort_keys=True)
+        fp.write("\n")
+    os.replace(tmp, CONFIG_PATH)
+
+
+# ---------------------------------------------------------------- pactl
+
+def pactl(*args):
+    try:
+        r = subprocess.run(["pactl"] + list(args), capture_output=True,
+                           text=True)
+    except FileNotFoundError:
+        raise Error("pactl not found")
+    if r.returncode != 0:
+        raise Error("pactl %s failed: %s" % (" ".join(args), r.stderr.strip()))
+    return r.stdout
+
+
+def pactl_json(*args):
+    return json.loads(pactl("--format=json", *args) or "[]")
+
+
+def _dev(kind, raw):
+    props = raw.get("properties") or {}
+    name = raw["name"]
+    if kind == "card":
+        desc = (props.get("device.description")
+                or props.get("device.product.name") or name)
+    else:
+        desc = raw.get("description") or name
+    bt = (name.startswith("bluez_") or props.get("device.api") == "bluez5")
+    hay = " ".join([name, desc, props.get("device.vendor.name", ""),
+                    props.get("device.product.name", "")]).replace(":", "_")
+    return {"kind": kind, "name": name, "desc": desc, "bluetooth": bt,
+            "hay": hay, "raw": raw}
+
+
+def get_devices(kind):
+    """kind: sink | source | card"""
+    out = [_dev(kind, r) for r in pactl_json("list", kind + "s")]
+    if kind == "source":
+        out = [d for d in out if not d["name"].endswith(".monitor")]
+    return out
+
+
+def default_name(kind):
+    try:
+        return pactl("get-default-" + kind).strip()
+    except Error:
+        return ""
+
+
+# ---------------------------------------------------------------- matching
+
+def spec_for(cfg, name):
+    """Alias spec for name, or an ad-hoc substring spec."""
+    if name in cfg["names"]:
+        return cfg["names"][name]
+    return {"match": re.escape(name)}
+
+
+def spec_matches(dev, spec):
+    pat = spec.get("match")
+    if spec.get("bluetooth") and not dev["bluetooth"]:
+        return False
+    if pat:
+        try:
+            if not re.search(pat, dev["hay"], re.I):
+                return False
+        except re.error:
+            return False
+    return bool(pat or spec.get("bluetooth"))
+
+
+def find(kind, spec, devs=None):
+    """Matching devices, the current default (if matching) first."""
+    devs = get_devices(kind) if devs is None else devs
+    found = [d for d in devs if spec_matches(d, spec)]
+    if kind in ("sink", "source"):
+        cur = default_name(kind)
+        found.sort(key=lambda d: d["name"] != cur)
+    return found
+
+
+# ---------------------------------------------------------------- actions
+
+def move_streams(kind, target):
+    """Move existing playback/recording streams to the new default."""
+    listcmd, movecmd = (("sink-inputs", "move-sink-input") if kind == "sink"
+                        else ("source-outputs", "move-source-output"))
+    try:
+        for line in pactl("list", "short", listcmd).splitlines():
+            idx = line.split("\t")[0]
+            try:
+                pactl(movecmd, idx, target)
+            except Error:
+                pass
+    except Error:
+        pass
+
+
+def set_default(kind, dev):
+    pactl("set-default-" + kind, dev["name"])
+    move_streams(kind, dev["name"])
+
+
+def set_node(kind, name, cfg, wait=0.0):
+    spec = spec_for(cfg, name)
+    deadline = time.time() + wait
+    while True:
+        found = find(kind, spec)
+        if found or time.time() >= deadline:
+            break
+        time.sleep(0.3)
+    if not found:
+        raise Error("no %s matches '%s'" % ("output" if kind == "sink"
+                                            else "input", name))
+    if len(found) > 1 and name not in cfg["names"]:
+        print("btaudio: '%s' is ambiguous, using first of: %s" % (
+            name, ", ".join(d["desc"] for d in found)), file=sys.stderr)
+    set_default(kind, found[0])
+    print("%s -> %s" % ("output" if kind == "sink" else "input",
+                        found[0]["desc"]))
+
+
+def set_card_profile(card, candidates):
+    """Set first usable profile in candidates. Returns profile or None."""
+    raw = card["raw"]
+    if raw.get("active_profile") in candidates:
+        return raw["active_profile"]
+    profs = raw.get("profiles") or {}
+    for c in candidates:
+        p = profs.get(c)
+        if p is not None and p.get("available", True) is not False:
+            pactl("set-card-profile", card["name"], c)
+            return c
+    return None
+
+
+def apply_profile(cfg, pname):
+    prof = cfg["profiles"][pname]
+    switched = False
+    for alias, cands in (prof.get("card_profiles") or {}).items():
+        for card in find("card", spec_for(cfg, alias)):
+            got = set_card_profile(card, cands)
+            if got and got != card["raw"].get("active_profile"):
+                print("card %s -> %s" % (card["desc"], got))
+                switched = True
+            elif got is None:
+                print("btaudio: %s has none of %s" % (card["desc"], cands),
+                      file=sys.stderr)
+    wait = 6.0 if switched else 1.0
+    errors = []
+    for key, kind in (("output", "sink"), ("input", "source")):
+        if prof.get(key):
+            try:
+                set_node(kind, prof[key], cfg, wait=wait)
+            except Error as e:
+                errors.append(str(e))
+    if errors:
+        raise Error("; ".join(errors))
+
+
+# ---------------------------------------------------------------- CLI
+
+def names_for(cfg, dev):
+    return [n for n, s in sorted(cfg["names"].items())
+            if spec_matches(dev, s)]
+
+
+def cmd_list(cfg, args):
+    for title, kind in (("Outputs", "sink"), ("Inputs", "source"),
+                        ("Cards", "card")):
+        print(title + ":")
+        cur = default_name(kind) if kind != "card" else None
+        for d in get_devices(kind):
+            mark = "*" if d["name"] == cur else " "
+            extra = ""
+            if kind == "card":
+                extra = "  [profile: %s]" % d["raw"].get("active_profile")
+            nm = names_for(cfg, d)
+            print(" %s %s%s%s" % (mark, d["desc"], extra,
+                                  "  <- " + ",".join(nm) if nm else ""))
+    print("Names:")
+    for n, s in sorted(cfg["names"].items()):
+        print("  %-12s %s" % (n, describe_spec(s)))
+    print("Profiles:")
+    for n, p in sorted(cfg["profiles"].items()):
+        print("  %-12s %s" % (n, describe_profile(p)))
+
+
+def describe_spec(s):
+    parts = []
+    if s.get("bluetooth"):
+        parts.append("any bluetooth")
+    if s.get("match"):
+        parts.append("/%s/" % s["match"])
+    return " + ".join(parts) or "(matches nothing)"
+
+
+def describe_profile(p):
+    s = "out=%s in=%s" % (p.get("output") or "-", p.get("input") or "-")
+    for a, c in (p.get("card_profiles") or {}).items():
+        s += " %s:%s" % (a, "|".join(c))
+    return s
+
+
+def cmd_node(kind):
+    def run(cfg, args):
+        if not args.name:
+            print("\n".join(sorted(cfg["names"])))
+            return
+        set_node(kind, args.name, cfg)
+    return run
+
+
+def cmd_profile(cfg, args):
+    if not args.name:
+        for n in sorted(cfg["profiles"]):
+            print(n)
+        return
+    if args.name not in cfg["profiles"]:
+        raise Error("no such profile '%s' (have: %s)" % (
+            args.name, ", ".join(sorted(cfg["profiles"])) or "none"))
+    apply_profile(cfg, args.name)
+
+
+def cmd_confui(cfg, args):
+    ConfUI(cfg).run()
+
+
+# ---------------------------------------------------------------- TUI
+
+class ConfUI:
+    TABS = ["Devices", "Names", "Profiles"]
+    HELP = {
+        0: "enter:activate  n:name this device  tab:next  q:quit",
+        1: "a:add  e:edit regex  t:toggle bluetooth  d:delete  tab:next  q:quit",
+        2: "a:add  enter:edit  x:apply  d:delete  tab:next  q:quit",
+    }
+
+    def __init__(self, cfg):
+        self.cfg = cfg
+        self.tab = 0
+        self.sel = 0
+        self.top = 0
+        self.msg = ""
+
+    def run(self):
+        os.environ.setdefault("ESCDELAY", "25")
+        import curses
+        self.curses = curses
+        curses.wrapper(self.main)
+
+    # --- helpers
+    def rows(self):
+        c = self.cfg
+        if self.tab == 0:
+            rows = []
+            for title, kind in (("OUTPUT", "sink"), ("INPUT", "source"),
+                                ("CARD", "card")):
+                cur = default_name(kind) if kind != "card" else None
+                for d in get_devices(kind):
+                    nm = names_for(c, d)
+                    txt = "%-6s %s %s" % (title, "*" if d["name"] == cur
+                                          else " ", d["desc"])
+                    if kind == "card":
+                        txt += "  [%s]" % d["raw"].get("active_profile")
+                    if nm:
+                        txt += "  <- " + ",".join(nm)
+                    rows.append((txt, d))
+            return rows
+        if self.tab == 1:
+            return [("%-12s %s" % (n, describe_spec(s)), n)
+                    for n, s in sorted(c["names"].items())]
+        return [("%-12s %s" % (n, describe_profile(p)), n)
+                for n, p in sorted(c["profiles"].items())]
+
+    def draw(self, scr, rows):
+        cur = self.curses
+        scr.erase()
+        h, w = scr.getmaxyx()
+        x = 0
+        for i, t in enumerate(self.TABS):
+            attr = cur.A_REVERSE if i == self.tab else cur.A_BOLD
+            label = " %s " % t
+            scr.addstr(0, x, label, attr)
+            x += len(label) + 1
+        body = h - 3
+        if self.sel < self.top:
+            self.top = self.sel
+        if self.sel >= self.top + body:
+            self.top = self.sel - body + 1
+        for i, (txt, _) in enumerate(rows[self.top:self.top + body]):
+            attr = cur.A_REVERSE if self.top + i == self.sel else 0
+            scr.addstr(2 + i, 0, txt[:w - 1], attr)
+        if not rows:
+            scr.addstr(2, 0, "(nothing here)")
+        scr.addstr(h - 2, 0, self.HELP[self.tab][:w - 1], cur.A_DIM)
+        scr.addstr(h - 1, 0, self.msg[:w - 1])
+        scr.refresh()
+
+    def prompt(self, scr, label, initial=""):
+        cur = self.curses
+        buf = list(initial)
+        cur.curs_set(1)
+        try:
+            while True:
+                h, w = scr.getmaxyx()
+                scr.move(h - 1, 0)
+                scr.clrtoeol()
+                scr.addstr(h - 1, 0, (label + "".join(buf))[:w - 1])
+                k = scr.get_wch()
+                if k == "\x1b":
+                    return None
+                if k in ("\n", "\r") or k == cur.KEY_ENTER:
+                    return "".join(buf).strip()
+                if k in ("\x7f", "\b", cur.KEY_BACKSPACE):
+                    if buf:
+                        buf.pop()
+                elif isinstance(k, str) and k.isprintable():
+                    buf.append(k)
+        finally:
+            cur.curs_set(0)
+
+    def menu(self, scr, title, items):
+        """Returns chosen index or None."""
+        cur = self.curses
+        sel = 0
+        while True:
+            scr.erase()
+            h, w = scr.getmaxyx()
+            scr.addstr(0, 0, title[:w - 1], cur.A_BOLD)
+            for i, it in enumerate(items[:h - 3]):
+                scr.addstr(2 + i, 2, it[:w - 4],
+                           cur.A_REVERSE if i == sel else 0)
+            scr.refresh()
+            k = scr.getch()
+            if k in (27, ord("q")):
+                return None
+            if k in (cur.KEY_UP, ord("k")):
+                sel = max(0, sel - 1)
+            elif k in (cur.KEY_DOWN, ord("j")):
+                sel = min(len(items) - 1, sel + 1)
+            elif k in (10, 13, cur.KEY_ENTER):
+                return sel
+
+    def pick_name(self, scr, title, allow_none=True):
+        names = sorted(self.cfg["names"])
+        items = (["(none)"] if allow_none else []) + names
+        i = self.menu(scr, title, items)
+        if i is None:
+            return False
+        if allow_none:
+            return None if i == 0 else names[i - 1]
+        return names[i]
+
+    def save(self):
+        save_config(self.cfg)
+
+    # --- actions
+    def guess_pattern(self, dev):
+        n = re.sub(r"^(alsa|bluez)_(output|input|card)\.", "", dev["name"])
+        if n.startswith("usb-"):
+            n = re.sub(r"\.[A-Za-z0-9-]+$", "", n)
+        return re.escape(n.replace(":", "_")).replace("\\-", "-")
+
+    def name_device(self, scr, dev):
+        name = self.prompt(scr, "name for '%s': " % dev["desc"])
+        if not name:
+            return
+        spec = {}
+        if dev["bluetooth"]:
+            i = self.menu(scr, "Match %s how?" % dev["desc"],
+                          ["this device only", "any bluetooth device"])
+            if i is None:
+                return
+            if i == 1:
+                spec["bluetooth"] = True
+        if not spec:
+            pat = self.prompt(scr, "regex: ", self.guess_pattern(dev))
+            if not pat:
+                return
+            spec["match"] = pat
+        self.cfg["names"][name] = spec
+        self.save()
+        self.msg = "saved name '%s'" % name
+
+    def activate(self, scr, dev):
+        if dev["kind"] == "card":
+            profs = [(k, v) for k, v in (dev["raw"].get("profiles") or {}).items()
+                     if v.get("available", True) is not False]
+            items = ["%s  (%s)" % (k, v.get("description", "")) for k, v in profs]
+            i = self.menu(scr, "Profile for %s" % dev["desc"], items)
+            if i is not None:
+                pactl("set-card-profile", dev["name"], profs[i][0])
+                self.msg = "card -> %s" % profs[i][0]
+        else:
+            set_default(dev["kind"], dev)
+            self.msg = "%s -> %s" % (dev["kind"], dev["desc"])
+
+    def edit_profile(self, scr, pname):
+        p = self.cfg["profiles"][pname]
+        while True:
+            items = ["output: %s" % (p.get("output") or "-"),
+                     "input: %s" % (p.get("input") or "-"),
+                     "card profiles: %s" % (
+                         ", ".join("%s=%s" % (a, "|".join(c)) for a, c in
+                                   (p.get("card_profiles") or {}).items()) or "-"),
+                     "done"]
+            i = self.menu(scr, "Profile '%s'" % pname, items)
+            if i is None or i == 3:
+                break
+            if i in (0, 1):
+                n = self.pick_name(scr, "Choose name")
+                if n is not False:
+                    key = "output" if i == 0 else "input"
+                    if n is None:
+                        p.pop(key, None)
+                    else:
+                        p[key] = n
+            else:
+                n = self.pick_name(scr, "Card (by name)", allow_none=False) \
+                    if self.cfg["names"] else False
+                if n is False:
+                    continue
+                cp = p.setdefault("card_profiles", {})
+                cur = "|".join(cp.get(n, []))
+                s = self.prompt(scr, "profiles for %s (a|b, first usable "
+                                "wins, empty=remove): " % n, cur)
+                if s is None:
+                    continue
+                if s:
+                    cp[n] = [x.strip() for x in s.split("|") if x.strip()]
+                else:
+                    cp.pop(n, None)
+            self.save()
+
+    def main(self, scr):
+        cur = self.curses
+        cur.curs_set(0)
+        scr.keypad(True)
+        while True:
+            try:
+                rows = self.rows()
+            except Error as e:
+                rows, self.msg = [], str(e)
+            self.sel = max(0, min(self.sel, len(rows) - 1))
+            self.draw(scr, rows)
+            k = scr.getch()
+            try:
+                if k in (ord("q"), 27):
+                    return
+                elif k in (9, cur.KEY_RIGHT):
+                    self.tab = (self.tab + 1) % 3
+                    self.sel = self.top = 0
+                elif k in (cur.KEY_BTAB, cur.KEY_LEFT):
+                    self.tab = (self.tab - 1) % 3
+                    self.sel = self.top = 0
+                elif k in (cur.KEY_UP, ord("k")):
+                    self.sel = max(0, self.sel - 1)
+                elif k in (cur.KEY_DOWN, ord("j")):
+                    self.sel += 1
+                else:
+                    self.msg = ""
+                    self.handle(scr, k, rows)
+            except Error as e:
+                self.msg = str(e)
+
+    def handle(self, scr, k, rows):
+        cur = self.curses
+        enter = k in (10, 13, cur.KEY_ENTER)
+        item = rows[self.sel][1] if rows else None
+        c = self.cfg
+        if self.tab == 0:
+            if item is None:
+                return
+            if enter:
+                self.activate(scr, item)
+            elif k == ord("n"):
+                self.name_device(scr, item)
+        elif self.tab == 1:
+            if k == ord("a"):
+                n = self.prompt(scr, "new name: ")
+                if n:
+                    pat = self.prompt(scr, "regex: ")
+                    if pat:
+                        c["names"][n] = {"match": pat}
+                        self.save()
+            elif item is None:
+                return
+            elif k == ord("e") or enter:
+                spec = c["names"][item]
+                pat = self.prompt(scr, "regex (empty=none): ",
+                                  spec.get("match", ""))
+                if pat is not None:
+                    if pat:
+                        spec["match"] = pat
+                    else:
+                        spec.pop("match", None)
+                    self.save()
+            elif k == ord("t"):
+                spec = c["names"][item]
+                spec["bluetooth"] = not spec.get("bluetooth", False)
+                self.save()
+            elif k == ord("d"):
+                del c["names"][item]
+                self.save()
+        else:
+            if k == ord("a"):
+                n = self.prompt(scr, "new profile name: ")
+                if n:
+                    c["profiles"].setdefault(n, {})
+                    self.save()
+                    self.edit_profile(scr, n)
+            elif item is None:
+                return
+            elif enter or k == ord("e"):
+                self.edit_profile(scr, item)
+            elif k == ord("x"):
+                apply_profile(c, item)
+                self.msg = "applied %s" % item
+            elif k == ord("d"):
+                del c["profiles"][item]
+                self.save()
+
+
+# ---------------------------------------------------------------- main
+
+def main(argv=None):
+    ap = argparse.ArgumentParser(
+        prog="btaudio", description="Switch audio outputs/inputs/profiles.")
+    sub = ap.add_subparsers(dest="cmd", required=True, metavar="command")
+    for cmd, fn, help_ in (
+            ("output", cmd_node("sink"), "set default output"),
+            ("input", cmd_node("source"), "set default input"),
+            ("profile", cmd_profile, "apply a named profile")):
+        sp = sub.add_parser(cmd, help=help_)
+        sp.add_argument("name", nargs="?", help="name (omit to list)")
+        sp.set_defaults(fn=fn)
+    sp = sub.add_parser("list", help="show devices, names, profiles")
+    sp.set_defaults(fn=cmd_list)
+    sp = sub.add_parser("confui", help="interactive configuration")
+    sp.set_defaults(fn=cmd_confui)
+    args = ap.parse_args(argv)
+    try:
+        args.fn(load_config(), args)
+    except Error as e:
+        print("btaudio: %s" % e, file=sys.stderr)
+        return 1
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
