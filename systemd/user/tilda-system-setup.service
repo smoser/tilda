@@ -1,0 +1,17 @@
+[Unit]
+Description=Run tilda setup/system once per boot
+# Runs once per user manager, not once per login, so a burst of
+# rex sessions does not each run it.
+ConditionPathExists=!/run/bootstrap/system-setup
+Before=rex.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+# Retry if setup fails, e.g. on apk.cgr.dev errors.
+Restart=on-failure
+RestartSec=5min
+ExecStart=/usr/bin/sudo -n sh -c '"$$1"/tilda/setup/system && mkdir -p /run/bootstrap && date -R > /run/bootstrap/system-setup' tilda-system-setup %h
+
+[Install]
+WantedBy=default.target

@@ -5,32 +5,26 @@ if [ -d /disks/home/smoser ]; then
    [ -d "$HOME/bin" ] || mkdir -p "$HOME/bin"
 fi
 
-if [ ! -e "/run/bootstrap/system-setup" ]; then
-    if [ -x "$HOME/tilda/setup/system" ]; then
-        sudo sh -c "
-           mkdir -p /run/bootstrap &&
-           $HOME/tilda/setup/system &&
-           date -R > /run/bootstrap/system-setup" ||
-           echo "failed system setup :-("
-    fi
+if [ -z "$REX_SESSION" ]; then
+    # setup/system runs once per boot from tilda-system-setup.service.
     if [ ! -w /disks/home/smoser ] && [ -x /disks/home/remount-disk ]; then
         sudo /disks/home/remount-disk ||
             { echo "WARN remount-disk failed $?"; sleep 3; }
     fi
+
+    if [ -x "$HOME/tilda/setup/user" ] &&
+        _uid=$(id -u) &&
+        _stamp=/run/user/$_uid/setup-user && _tstamp="/tmp/setup-user-$_uid" &&
+        ! { [ -e "$_stamp" ] || [ -e "$_tstamp" ]; }; then
+
+        # tstamp is just in case /run/user doesnt' work.
+        date -R > "$_stamp" || date -R > "$_tstamp"
+        "$HOME/tilda/setup/user" || echo "Failed user-setup"
+    fi
+    unset _uid _stamp _tstamp
 fi
 
-if [ -x "$HOME/tilda/setup/user" ] &&
-    _uid=$(id -u) &&
-    _stamp=/run/user/$_uid/setup-user && _tstamp="/tmp/setup-user-$_uid" &&
-    ! { [ -e "$_stamp" ] || [ -e "$_tstamp" ]; }; then
-
-    # tstamp is just in case /run/user doesnt' work.
-    date -R > "$_stamp" || date -R > "$_tstamp"
-    "$HOME/tilda/setup/user" || echo "Failed user-setup"
-fi
-unset _uid _stamp _tstamp
-
-if [ -t 0 ] && [ -t 1 ] && command -v chainctl >/dev/null 2>&1; then
+if [ -z "$REX_SESSION" ] && [ -t 0 ] && [ -t 1 ] && command -v chainctl >/dev/null 2>&1; then
     chainctl-login --if-needed-by="20:00"
     #h=$(date +%H)
     #if [ "$h" -lt 18 ]; then
