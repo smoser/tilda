@@ -5,6 +5,8 @@
   btaudio input <name>      set default input (source)
   btaudio profile <name>    apply a named profile (output + input + card profiles)
   btaudio list              show devices, names and profiles
+  btaudio status            show current output, input and bluetooth state
+  btaudio completion bash   print bash completion (eval it in ~/.bashrc)
   btaudio confui            curses UI to manage names and profiles
 
 A *name* is an alias: a case-insensitive regex matched against a device's
@@ -12,6 +14,9 @@ node/card name, description and vendor, and/or "any bluetooth device".
 That lets one name like 'headphone' mean "whichever bluetooth headset is
 connected right now".  <name> may also be a plain substring of a device
 description/name, even if no alias exists.
+
+A profile may also set "volume" / "input_volume" (percent), and will try to
+connect a paired bluetooth headset if none is connected.
 
 Config: $XDG_CONFIG_HOME/btaudio/config.json (default ~/.config/btaudio)
 Requires only python3 (stdlib) and `pactl` (pipewire-pulse or pulseaudio).
@@ -38,6 +43,8 @@ DEFAULT_CONFIG = {
     "profiles": {
         "lg-mic": {"output": "lg", "input": "blue",
                    "card_profiles": {"headphone": ["a2dp-sink"]}},
+        "acer-mic": {"output": "acer", "input": "blue",
+                     "card_profiles": {"headphone": ["a2dp-sink"]}},
         "hp-mic": {"output": "headphone", "input": "blue",
                    "card_profiles": {"headphone": ["a2dp-sink"]}},
         "hp-hp": {"output": "headphone", "input": "headphone",
@@ -194,6 +201,7 @@ def set_node(kind, name, cfg, wait=0.0):
     set_default(kind, found[0])
     print("%s -> %s" % ("output" if kind == "sink" else "input",
                         found[0]["desc"]))
+    return found[0]
 
 
 def set_card_profile(card, candidates):
@@ -210,8 +218,73 @@ def set_card_profile(card, candidates):
     return None
 
 
+def bluetoothctl(*args, timeout=15):
+    try:
+        r = subprocess.run(["bluetoothctl"] + list(args), capture_output=True,
+                           text=True, timeout=timeout)
+    except (FileNotFoundError, subprocess.TimeoutExpired):
+        return ""
+    return r.stdout
+
+
+ADDR_RE = re.compile(r"(?:[0-9A-Fa-f]{2}[_:]){5}[0-9A-Fa-f]{2}")
+
+
+def bt_candidates(spec):
+    """Addresses to try connecting for this spec, best guess first."""
+    m = ADDR_RE.search(spec.get("match") or "")
+    if m:
+        return [m.group(0).replace("_", ":").upper()]
+    out = []
+    for line in bluetoothctl("devices", "Paired").splitlines():
+        parts = line.split(None, 2)
+        if len(parts) < 2 or parts[0] != "Device":
+            continue
+        info = bluetoothctl("info", parts[1])
+        if "Icon: audio-" in info and "Connected: yes" not in info:
+            out.append(parts[1])
+    return out
+
+
+def ensure_bluetooth(cfg, prof):
+    """If a bluetooth name used by prof has no connected device, try to
+    connect a paired audio device."""
+    aliases = {prof.get("output"), prof.get("input")}
+    aliases.update((prof.get("card_profiles") or {}).keys())
+    for alias in sorted(a for a in aliases if a in cfg["names"]):
+        spec = cfg["names"][alias]
+        if not (spec.get("bluetooth") or ADDR_RE.search(spec.get("match") or "")):
+            continue
+        if find("card", spec):
+            continue
+        for addr in bt_candidates(spec):
+            print("connecting bluetooth %s ..." % addr)
+            if "Connection successful" not in bluetoothctl(
+                    "connect", addr, timeout=20):
+                continue
+            deadline = time.time() + 8
+            while time.time() < deadline and not find("card", spec):
+                time.sleep(0.3)
+            if find("card", spec):
+                break
+        else:
+            print("btaudio: could not connect a device for '%s'" % alias,
+                  file=sys.stderr)
+
+
+def pct(v):
+    return "%d%%" % int(str(v).rstrip("%"))
+
+
+def set_volume(kind, dev, value):
+    pactl("set-%s-mute" % kind, dev["name"], "0")
+    pactl("set-%s-volume" % kind, dev["name"], pct(value))
+    print("%s volume %s" % (kind, pct(value)))
+
+
 def apply_profile(cfg, pname):
     prof = cfg["profiles"][pname]
+    ensure_bluetooth(cfg, prof)
     switched = False
     for alias, cands in (prof.get("card_profiles") or {}).items():
         for card in find("card", spec_for(cfg, alias)):
@@ -224,10 +297,13 @@ def apply_profile(cfg, pname):
                       file=sys.stderr)
     wait = 6.0 if switched else 1.0
     errors = []
-    for key, kind in (("output", "sink"), ("input", "source")):
+    for key, kind, vkey in (("output", "sink", "volume"),
+                            ("input", "source", "input_volume")):
         if prof.get(key):
             try:
-                set_node(kind, prof[key], cfg, wait=wait)
+                dev = set_node(kind, prof[key], cfg, wait=wait)
+                if prof.get(vkey) is not None:
+                    set_volume(kind, dev, prof[vkey])
             except Error as e:
                 errors.append(str(e))
     if errors:
@@ -275,6 +351,10 @@ def describe_profile(p):
     s = "out=%s in=%s" % (p.get("output") or "-", p.get("input") or "-")
     for a, c in (p.get("card_profiles") or {}).items():
         s += " %s:%s" % (a, "|".join(c))
+    if p.get("volume") is not None:
+        s += " vol=%s" % pct(p["volume"])
+    if p.get("input_volume") is not None:
+        s += " in-vol=%s" % pct(p["input_volume"])
     return s
 
 
@@ -296,6 +376,51 @@ def cmd_profile(cfg, args):
         raise Error("no such profile '%s' (have: %s)" % (
             args.name, ", ".join(sorted(cfg["profiles"])) or "none"))
     apply_profile(cfg, args.name)
+
+
+def volume_of(raw):
+    if raw.get("mute"):
+        return "muted"
+    for ch in (raw.get("volume") or {}).values():
+        return ch.get("value_percent", "?")
+    return "?"
+
+
+def cmd_status(cfg, args):
+    for label, kind in (("output", "sink"), ("input", "source")):
+        cur = default_name(kind)
+        dev = next((d for d in get_devices(kind) if d["name"] == cur), None)
+        if dev:
+            nm = names_for(cfg, dev)
+            print("%-9s %s [%s]%s" % (label + ":", dev["desc"],
+                                      volume_of(dev["raw"]),
+                                      "  (%s)" % ",".join(nm) if nm else ""))
+        else:
+            print("%-9s (none)" % (label + ":"))
+    for card in get_devices("card"):
+        if card["bluetooth"]:
+            print("%-9s %s [%s]" % ("bluetooth:", card["desc"],
+                                    card["raw"].get("active_profile")))
+
+
+BASH_COMPLETION = r'''_btaudio() {
+    local cur=${COMP_WORDS[COMP_CWORD]}
+    if [ "$COMP_CWORD" -eq 1 ]; then
+        COMPREPLY=($(compgen -W "output input profile list status confui completion" -- "$cur"))
+    else
+        case ${COMP_WORDS[1]} in
+            output|input|profile)
+                COMPREPLY=($(compgen -W "$(btaudio ${COMP_WORDS[1]} 2>/dev/null)" -- "$cur"));;
+            completion) COMPREPLY=($(compgen -W "bash" -- "$cur"));;
+        esac
+    fi
+}
+complete -F _btaudio btaudio
+'''
+
+
+def cmd_completion(cfg, args):
+    print(BASH_COMPLETION, end="")
 
 
 def cmd_confui(cfg, args):
@@ -480,11 +605,23 @@ class ConfUI:
                      "card profiles: %s" % (
                          ", ".join("%s=%s" % (a, "|".join(c)) for a, c in
                                    (p.get("card_profiles") or {}).items()) or "-"),
+                     "volume %%: %s" % p.get("volume", "-"),
+                     "input volume %%: %s" % p.get("input_volume", "-"),
                      "done"]
             i = self.menu(scr, "Profile '%s'" % pname, items)
-            if i is None or i == 3:
+            if i is None or i == 5:
                 break
-            if i in (0, 1):
+            if i in (3, 4):
+                key = "volume" if i == 3 else "input_volume"
+                v = self.prompt(scr, "%s percent (empty=unset): " % key,
+                                str(p.get(key, "")))
+                if v is None:
+                    continue
+                if not v:
+                    p.pop(key, None)
+                elif v.rstrip("%").isdigit():
+                    p[key] = int(v.rstrip("%"))
+            elif i in (0, 1):
                 n = self.pick_name(scr, "Choose name")
                 if n is not False:
                     key = "output" if i == 0 else "input"
@@ -603,7 +740,7 @@ class ConfUI:
 def main(argv=None):
     ap = argparse.ArgumentParser(
         prog="btaudio", description="Switch audio outputs/inputs/profiles.")
-    sub = ap.add_subparsers(dest="cmd", required=True, metavar="command")
+    sub = ap.add_subparsers(dest="cmd", metavar="command")
     for cmd, fn, help_ in (
             ("output", cmd_node("sink"), "set default output"),
             ("input", cmd_node("source"), "set default input"),
@@ -613,9 +750,17 @@ def main(argv=None):
         sp.set_defaults(fn=fn)
     sp = sub.add_parser("list", help="show devices, names, profiles")
     sp.set_defaults(fn=cmd_list)
+    sp = sub.add_parser("status", help="show current output/input/bluetooth")
+    sp.set_defaults(fn=cmd_status)
     sp = sub.add_parser("confui", help="interactive configuration")
     sp.set_defaults(fn=cmd_confui)
+    sp = sub.add_parser("completion", help="print shell completion script")
+    sp.add_argument("shell", choices=["bash"])
+    sp.set_defaults(fn=cmd_completion)
     args = ap.parse_args(argv)
+    if not getattr(args, "fn", None):
+        ap.print_help()
+        return 2
     try:
         args.fn(load_config(), args)
     except Error as e:
