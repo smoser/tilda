@@ -247,10 +247,9 @@ def bt_candidates(spec):
 
 
 def ensure_bluetooth(cfg, prof):
-    """If a bluetooth name used by prof has no connected device, try to
-    connect a paired audio device."""
+    """If a bluetooth name used as prof's output/input has no connected
+    device, try to connect a paired audio device."""
     aliases = {prof.get("output"), prof.get("input")}
-    aliases.update((prof.get("card_profiles") or {}).keys())
     for alias in sorted(a for a in aliases if a in cfg["names"]):
         spec = cfg["names"][alias]
         if not (spec.get("bluetooth") or ADDR_RE.search(spec.get("match") or "")):
