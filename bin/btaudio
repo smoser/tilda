@@ -6,6 +6,7 @@
   btaudio profile <name> [-V PCT] [-I PCT]  apply a named profile (output +
                                             input + card profiles); -V/-I
                                             override the profile's volumes
+  btaudio -n ...            (or --dry-run) show what would change, change nothing
   btaudio list              show devices, names and profiles
   btaudio status            show current output, input and bluetooth state
   btaudio completion bash   print bash completion (eval it in ~/.bashrc)
@@ -60,6 +61,14 @@ class Error(Exception):
     pass
 
 
+DRY_RUN = False
+
+
+def say(msg, file=None):
+    """Print an action message (marked when dry-running)."""
+    print(("[dry-run] " if DRY_RUN else "") + msg, file=file)
+
+
 # ---------------------------------------------------------------- config
 
 def load_config():
@@ -88,6 +97,9 @@ def save_config(cfg):
 # ---------------------------------------------------------------- pactl
 
 def pactl(*args):
+    if DRY_RUN and args[0].startswith(("set-", "move-")):
+        say("pactl " + " ".join(args))
+        return ""
     try:
         r = subprocess.run(["pactl"] + list(args), capture_output=True,
                            text=True)
@@ -201,8 +213,8 @@ def set_node(kind, name, cfg, wait=0.0):
         print("btaudio: '%s' is ambiguous, using first of: %s" % (
             name, ", ".join(d["desc"] for d in found)), file=sys.stderr)
     set_default(kind, found[0])
-    print("%s -> %s" % ("output" if kind == "sink" else "input",
-                        found[0]["desc"]))
+    say("%s -> %s" % ("output" if kind == "sink" else "input",
+                      found[0]["desc"]))
     return found[0]
 
 
@@ -252,6 +264,7 @@ def ensure_bluetooth(cfg, prof):
     """If a bluetooth name used as prof's output/input has no connected
     device, try to connect a paired audio device."""
     aliases = {prof.get("output"), prof.get("input")}
+    would_connect = False
     for alias in sorted(a for a in aliases if a in cfg["names"]):
         spec = cfg["names"][alias]
         if not (spec.get("bluetooth") or ADDR_RE.search(spec.get("match") or "")):
@@ -259,7 +272,10 @@ def ensure_bluetooth(cfg, prof):
         if find("card", spec):
             continue
         for addr in bt_candidates(spec):
-            print("connecting bluetooth %s ..." % addr)
+            say("connecting bluetooth %s ..." % addr)
+            if DRY_RUN:
+                would_connect = True
+                break  # don't try the rest of the candidates
             if "Connection successful" not in bluetoothctl(
                     "connect", addr, timeout=20):
                 continue
@@ -271,6 +287,7 @@ def ensure_bluetooth(cfg, prof):
         else:
             print("btaudio: could not connect a device for '%s'" % alias,
                   file=sys.stderr)
+    return would_connect
 
 
 def pct(v):
@@ -280,8 +297,8 @@ def pct(v):
 def set_volume(kind, dev, value):
     pactl("set-%s-mute" % kind, dev["name"], "0")
     pactl("set-%s-volume" % kind, dev["name"], pct(value))
-    print("%s volume %s" % ("output" if kind == "sink" else "input",
-                           pct(value)))
+    say("%s volume %s" % ("output" if kind == "sink" else "input",
+                         pct(value)))
 
 
 def apply_profile(cfg, pname, volume=None, input_volume=None):
@@ -290,18 +307,18 @@ def apply_profile(cfg, pname, volume=None, input_volume=None):
         prof["volume"] = volume
     if input_volume is not None:
         prof["input_volume"] = input_volume
-    ensure_bluetooth(cfg, prof)
+    pending = ensure_bluetooth(cfg, prof)  # dry-run: would connect
     switched = False
     for alias, cands in (prof.get("card_profiles") or {}).items():
         for card in find("card", spec_for(cfg, alias)):
             got = set_card_profile(card, cands)
             if got and got != card["raw"].get("active_profile"):
-                print("card %s -> %s" % (card["desc"], got))
+                say("card %s -> %s" % (card["desc"], got))
                 switched = True
             elif got is None:
                 print("btaudio: %s has none of %s" % (card["desc"], cands),
                       file=sys.stderr)
-    wait = 6.0 if switched else 1.0
+    wait = 0.0 if DRY_RUN else (6.0 if switched else 1.0)
     errors = []
     for key, kind, vkey in (("output", "sink", "volume"),
                             ("input", "source", "input_volume")):
@@ -311,7 +328,10 @@ def apply_profile(cfg, pname, volume=None, input_volume=None):
                 if prof.get(vkey) is not None:
                     set_volume(kind, dev, prof[vkey])
             except Error as e:
-                errors.append(str(e))
+                if DRY_RUN and (switched or pending):
+                    say("would wait for %s '%s' to appear" % (key, prof[key]))
+                else:
+                    errors.append(str(e))
     if errors:
         raise Error("; ".join(errors))
 
@@ -765,12 +785,18 @@ class ConfUI:
 def main(argv=None):
     ap = argparse.ArgumentParser(
         prog="btaudio", description="Switch audio outputs/inputs/profiles.")
+    ap.add_argument("-n", "--dry-run", action="store_true",
+                    help="show what would change without changing anything")
+    common = argparse.ArgumentParser(add_help=False)
+    common.add_argument("-n", "--dry-run", action="store_true",
+                        default=argparse.SUPPRESS,
+                        help="show what would change without changing anything")
     sub = ap.add_subparsers(dest="cmd", metavar="command")
     for cmd, fn, help_ in (
             ("output", cmd_node("sink"), "set default output"),
             ("input", cmd_node("source"), "set default input"),
             ("profile", cmd_profile, "apply a named profile")):
-        sp = sub.add_parser(cmd, help=help_)
+        sp = sub.add_parser(cmd, help=help_, parents=[common])
         sp.add_argument("name", nargs="?", help="name (omit to list)")
         if cmd in ("output", "profile"):
             sp.add_argument("-V", "--volume", type=vol_arg, metavar="PCT",
@@ -791,6 +817,11 @@ def main(argv=None):
     args = ap.parse_args(argv)
     if not getattr(args, "fn", None):
         ap.print_help()
+        return 2
+    global DRY_RUN
+    DRY_RUN = args.dry_run
+    if DRY_RUN and args.fn is cmd_confui:
+        print("btaudio: --dry-run does not apply to confui", file=sys.stderr)
         return 2
     try:
         args.fn(load_config(), args)
