@@ -59,3 +59,10 @@ ssh_auth_from_tmux(){
            return 1;;
     esac
 }
+
+_auth_sock() {
+    local s="$HOME/.ssh/forward/agent.sock"
+    [ -S "$s" ] && export SSH_AUTH_SOCK="$s"
+}
+
+_auth_sock
